@@ -794,17 +794,18 @@ export default {
     checkPhotoQuality() {
       // Mock模式直接通过质量检查
       if (!USE_BAIDU_API) {
-        return {
-          passed: true,
-          score: 0.9
-        };
+        return { passed: true, score: 0.9 };
       }
 
-      if (this.confidence < 0.75) {
-        return {
-          passed: false,
-          reason: '车辆未完全进入虚线框，请重新对准'
-        };
+      // 放宽通过条件：matched 直接通过；
+      // 或 good 且 置信度>=0.65 且 IoU/面积比达到阈值
+      const metrics = this.lastDetectionMetrics || {};
+      const overlapOK = (metrics.iou || 0) >= 0.62 && (metrics.areaRatio || 0) >= 0.72;
+      const canPass = this.frameStatus === 'matched' ||
+        (this.frameStatus === 'good' && this.confidence >= 0.65 && overlapOK);
+
+      if (!canPass) {
+        return { passed: false, reason: '车辆未完全进入虚线框，请重新对准' };
       }
 
       const frame = this.getDetectionFrame();

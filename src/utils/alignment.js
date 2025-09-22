@@ -51,10 +51,12 @@ function computeIoU(boxA, boxB) {
 function getAdjustmentHint(offsetX, offsetY, areaRatio) {
   const hints = [];
 
+  // 注意：offsetX = 实际中心 - 期望中心
+  // 若 offsetX>0 表示车辆偏右，应提示“向右调整一点”（与用户直觉一致）
   if (offsetX > 0.02) {
-    hints.push('向左调整一点');
-  } else if (offsetX < -0.02) {
     hints.push('向右调整一点');
+  } else if (offsetX < -0.02) {
+    hints.push('向左调整一点');
   }
 
   if (offsetY > 0.02) {
