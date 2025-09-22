@@ -52,6 +52,50 @@
       </div>
     </div>
 
+    <!-- 调试信息面板 -->
+    <div v-if="DEBUG_MODE && debugInfo" class="debug-panel">
+      <div class="debug-header" @click="toggleDebugPanel">
+        🐛 调试信息 <span class="debug-toggle">{{ showDebugPanel ? '▼' : '▶' }}</span>
+      </div>
+      <div v-show="showDebugPanel" class="debug-content">
+        <div class="debug-section">
+          <h4>检测结果</h4>
+          <div>检测到车辆: {{ debugInfo.hasVehicle ? '是' : '否' }}</div>
+          <div>置信度: {{ (debugInfo.confidence * 100).toFixed(1) }}%</div>
+          <div>状态: {{ debugInfo.frameStatus }}</div>
+        </div>
+
+        <div v-if="debugInfo.detection" class="debug-section">
+          <h4>车辆位置</h4>
+          <div>X: {{ (debugInfo.detection.x * 100).toFixed(1) }}%</div>
+          <div>Y: {{ (debugInfo.detection.y * 100).toFixed(1) }}%</div>
+          <div>宽: {{ (debugInfo.detection.width * 100).toFixed(1) }}%</div>
+          <div>高: {{ (debugInfo.detection.height * 100).toFixed(1) }}%</div>
+        </div>
+
+        <div class="debug-section">
+          <h4>预期位置</h4>
+          <div>X: {{ (debugInfo.expected.x * 100).toFixed(1) }}%</div>
+          <div>Y: {{ (debugInfo.expected.y * 100).toFixed(1) }}%</div>
+          <div>宽: {{ (debugInfo.expected.width * 100).toFixed(1) }}%</div>
+          <div>高: {{ (debugInfo.expected.height * 100).toFixed(1) }}%</div>
+        </div>
+
+        <div v-if="debugInfo.metrics" class="debug-section">
+          <h4>对齐指标</h4>
+          <div>IoU: {{ debugInfo.metrics.iou.toFixed(3) }}</div>
+          <div>X偏移: {{ debugInfo.metrics.offsetX.toFixed(3) }}</div>
+          <div>Y偏移: {{ debugInfo.metrics.offsetY.toFixed(3) }}</div>
+          <div>面积比: {{ debugInfo.metrics.areaRatio.toFixed(3) }}</div>
+        </div>
+
+        <div class="debug-section">
+          <h4>建议</h4>
+          <div>{{ debugInfo.message }}</div>
+        </div>
+      </div>
+    </div>
+
     <div class="results-modal" :class="{ show: showResultsModal }">
       <div class="results-header">
         <h2>拍摄结果</h2>
@@ -100,6 +144,7 @@ const USE_BAIDU_API = true; // 开启百度API检测
 const BAIDU_MIN_CONFIDENCE = 0.6; // 百度API最低置信度阈值
 const DETECTION_INTERVAL_MS = 1200;
 const BAIDU_DETECTION_INTERVAL_MS = 2000; // 百度API检测间隔更长
+const DEBUG_MODE = true; // 调试模式，显示详细信息
 const DETECTION_CANVAS_MAX_WIDTH = 720;
 const USE_SAMPLE_IMAGE_DEBUG = false;
 const SAMPLE_IMAGE_URL = 'https://s3-gz01.didistatic.com/packages-mait/img/w0VyxKMAgG1758512666365.png';
@@ -129,6 +174,9 @@ export default {
       showResultsModal: false,
       speechReady: false, // 语音是否已就绪
       userInteracted: false, // 用户是否已交互
+      debugInfo: null, // 调试信息
+      showDebugPanel: true, // 是否显示调试面板内容
+      DEBUG_MODE, // 调试模式常量
       accessToken: null,
       detectionTimer: null,
       stream: null,
@@ -565,16 +613,29 @@ export default {
         return;
       }
 
-
       this.confidence = result.confidence || 0;
       this.statusText = result.message;
       this.frameStatus = result.frameStatus || 'detecting';
       this.lastDetectionMetrics = result.metrics || null;
 
+      // 更新调试信息
+      if (DEBUG_MODE) {
+        this.debugInfo = {
+          hasVehicle: result.hasVehicle,
+          confidence: result.confidence || 0,
+          frameStatus: result.frameStatus || 'detecting',
+          message: result.message,
+          detection: result.detectionBox,
+          expected: this.currentStep.expectedRegion,
+          metrics: result.metrics
+        };
+      }
+
       this.logDetectionMetrics(result);
 
-      // 自动拍照：检测到对准状态且置信度够高
-      if (this.frameStatus === 'matched' && this.confidence > 0.85 && !this.isCapturing) {
+      // 自动拍照：检测到对准状态且置信度够高 (调试模式降低阈值)
+      const autoThreshold = DEBUG_MODE ? 0.7 : 0.85;
+      if (this.frameStatus === 'matched' && this.confidence > autoThreshold && !this.isCapturing) {
         const now = Date.now();
         if (!this.lastGoodDetectionTime || now - this.lastGoodDetectionTime > 3000) {
           this.playVoice('对准成功，正在拍照', true); // 强制播放成功语音
@@ -885,6 +946,10 @@ export default {
       setTimeout(() => {
         this.playVoice('语音提示已启用，开始车辆检测', true);
       }, 500);
+    },
+
+    toggleDebugPanel() {
+      this.showDebugPanel = !this.showDebugPanel;
     },
 
     playVoice(text, forcePlay = false) {
@@ -1381,6 +1446,67 @@ body {
 @keyframes pulse {
   0%, 100% { transform: scale(1); }
   50% { transform: scale(1.1); }
+}
+
+.debug-panel {
+  position: fixed;
+  top: 100px;
+  left: 10px;
+  width: 280px;
+  background: rgba(0, 0, 0, 0.9);
+  color: white;
+  border-radius: 8px;
+  font-size: 12px;
+  z-index: 80;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+.debug-header {
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.1);
+  cursor: pointer;
+  font-weight: bold;
+  border-radius: 8px 8px 0 0;
+  user-select: none;
+}
+
+.debug-toggle {
+  float: right;
+}
+
+.debug-content {
+  padding: 0;
+}
+
+.debug-section {
+  padding: 8px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.debug-section:last-child {
+  border-bottom: none;
+}
+
+.debug-section h4 {
+  margin: 0 0 4px 0;
+  color: #0abaff;
+  font-size: 11px;
+  font-weight: bold;
+}
+
+.debug-section div {
+  margin: 2px 0;
+  font-family: monospace;
+}
+
+@media (max-width: 640px) {
+  .debug-panel {
+    width: 260px;
+    left: 5px;
+    top: 80px;
+    font-size: 11px;
+  }
 }
 
 .results-modal {
