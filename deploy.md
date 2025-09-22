@@ -17,14 +17,16 @@
 3. **配置构建设置**
    ```
    Framework preset: Vue
-   Build command: npm run build
+   Build command: npm install && npm run build
    Build output directory: dist
    Root directory: (留空)
+   Node.js version: 18
    ```
 
-4. **环境变量（可选）**
+4. **环境变量**
    ```
    NODE_ENV = production
+   VUE_APP_ENV = production
    ```
 
 5. **点击 "Save and Deploy"**

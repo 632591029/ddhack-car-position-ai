@@ -1,13 +1,2 @@
 name = "car-ultra-vue"
 compatibility_date = "2024-01-01"
-pages_build_output_dir = "dist"
-
-[build]
-command = "npm ci && npm run build:cf"
-
-[build.environment_variables]
-NODE_VERSION = "18"
-
-[[pages.functions]]
-pattern = "/api/*"
-function = "api/[[path]]"
