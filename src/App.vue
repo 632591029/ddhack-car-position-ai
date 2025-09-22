@@ -670,7 +670,18 @@ export default {
         (this.frameStatus === 'matched' && this.confidence >= autoThreshold) ||
         (this.frameStatus === 'good' && this.confidence >= (autoThreshold - 0.05) && goodEnoughOverlap)
       );
-      if (canAuto && !this.isCapturing && !this.capturedPhotos[this.currentStepIndex]) {
+      // 如果当前步骤已拍摄完成，直接进入下一步
+      if (this.capturedPhotos[this.currentStepIndex] && !this.isCapturing) {
+        const now = Date.now();
+        if (!this.lastGoodDetectionTime || now - this.lastGoodDetectionTime > 1000) {
+          this.lastGoodDetectionTime = now;
+          this.stopDetection(); // 停止检测
+          setTimeout(() => this.nextStep(), 500); // 直接进入下一步
+        }
+        return;
+      }
+
+      if (canAuto && !this.isCapturing) {
         const now = Date.now();
         if (!this.lastGoodDetectionTime || now - this.lastGoodDetectionTime > 2500) { // 减少等待时间到2.5秒
           this.playVoice('对准成功，正在拍照', true); // 强制播放成功语音
@@ -896,8 +907,14 @@ export default {
     },
 
     async autoCapture() {
-      if (this.isCapturing || this.capturedPhotos[this.currentStepIndex]) {
-        return; // 如果正在拍照或当前步骤已拍摄，直接返回
+      if (this.isCapturing) {
+        return; // 如果正在拍照，直接返回
+      }
+
+      // 如果当前步骤已拍摄，直接进入下一步
+      if (this.capturedPhotos[this.currentStepIndex]) {
+        this.nextStep();
+        return;
       }
 
       this.isCapturing = true;
@@ -941,20 +958,31 @@ export default {
 
     nextStep() {
       if (this.currentStepIndex < this.steps.length - 1) {
+        // 立即停止当前检测
+        this.stopDetection();
+        this.isCapturing = false;
+
+        // 更新步骤索引和状态
         this.currentStepIndex += 1;
         this.frameStatus = 'detecting';
         this.confidence = 0;
         this.statusText = '';
         this.consecutiveFailures = 0; // 重置失败计数
         this.lastErrorVoiceTime = null; // 清空错误语音时间戳
+        this.lastGoodDetectionTime = null; // 重置拍照时间戳
 
         // 强制触发Vue响应式更新
         this.$nextTick(() => {
-          this.playVoice(this.currentStep.voice, true); // 强制播放下一步骤语音
-          // 延迟一点再开始检测，确保UI已更新
+          // 确保UI完全更新
+          this.$forceUpdate();
+
           setTimeout(() => {
-            this.startDetection();
-          }, 500);
+            this.playVoice(this.currentStep.voice, true); // 强制播放下一步骤语音
+            // 再延迟开始检测，确保所有状态都已更新
+            setTimeout(() => {
+              this.startDetection();
+            }, 300);
+          }, 200);
         });
       } else {
         this.showResults();
