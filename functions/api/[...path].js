@@ -1,38 +1,29 @@
-// Cloudflare Pages Functions for API proxy
-export async function onRequestPost(context) {
-  return handleRequest(context);
-}
+export async function onRequest(context) {
+  var request = context.request;
+  var params = context.params;
 
-export async function onRequestGet(context) {
-  return handleRequest(context);
-}
-
-export async function onRequestOptions(context) {
-  return new Response(null, {
-    status: 200,
-    headers: {
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-      'Access-Control-Max-Age': '86400',
-    },
-  });
-}
-
-async function handleRequest(context) {
-  const { request, params } = context;
-  const path = params.path.join('/');
-
-  console.log('API Request:', request.method, path);
+  // CORS预检请求
+  if (request.method === 'OPTIONS') {
+    return new Response(null, {
+      status: 200,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+        'Access-Control-Max-Age': '86400',
+      },
+    });
+  }
 
   try {
-    let targetUrl;
+    var path = params.path.join('/');
+    var targetUrl;
 
-    // 路由规则
-    if (path.startsWith('oauth/')) {
-      targetUrl = `https://aip.baidubce.com/${path}`;
-    } else if (path.startsWith('baidu/')) {
-      targetUrl = `https://aip.baidubce.com/${path.replace('baidu/', '')}`;
+    // 路由到百度API
+    if (path.indexOf('oauth/') === 0) {
+      targetUrl = 'https://aip.baidubce.com/' + path;
+    } else if (path.indexOf('baidu/') === 0) {
+      targetUrl = 'https://aip.baidubce.com/' + path.replace('baidu/', '');
     } else {
       return new Response('Invalid API path', {
         status: 404,
@@ -40,26 +31,25 @@ async function handleRequest(context) {
       });
     }
 
-    console.log('Proxying to:', targetUrl);
-
-    // 构建代理请求
-    const proxyHeaders = {
-      'Content-Type': 'application/x-www-form-urlencoded',
-      'User-Agent': 'CloudFlare-Pages-Function/1.0'
+    // 构建请求
+    var requestOptions = {
+      method: request.method,
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'User-Agent': 'CloudFlare-Pages-Function/1.0'
+      }
     };
 
-    const proxyRequest = new Request(targetUrl, {
-      method: request.method,
-      headers: proxyHeaders,
-      body: request.method === 'POST' ? await request.text() : undefined,
-    });
+    // 添加请求体
+    if (request.method === 'POST') {
+      requestOptions.body = await request.text();
+    }
 
-    // 发送请求到百度API
-    const response = await fetch(proxyRequest);
-    const responseText = await response.text();
+    // 发送请求
+    var response = await fetch(targetUrl, requestOptions);
+    var responseText = await response.text();
 
-    console.log('Response:', response.status, responseText.length);
-
+    // 返回响应
     return new Response(responseText, {
       status: response.status,
       headers: {
@@ -71,8 +61,6 @@ async function handleRequest(context) {
     });
 
   } catch (error) {
-    console.error('Proxy error:', error);
-
     return new Response(JSON.stringify({
       error: 'Proxy failed',
       message: error.message
