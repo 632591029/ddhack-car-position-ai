@@ -44,6 +44,14 @@
       {{ voiceHintText }}
     </div>
 
+    <!-- 语音激活提示 -->
+    <div class="speech-enable-hint" :class="{ show: !userInteracted && speechReady }" @click="enableSpeechManually">
+      <div class="speech-hint-content">
+        <div class="speech-icon">🔊</div>
+        <div class="speech-text">点击启用语音提示</div>
+      </div>
+    </div>
+
     <div class="results-modal" :class="{ show: showResultsModal }">
       <div class="results-header">
         <h2>拍摄结果</h2>
@@ -88,7 +96,8 @@ const { detectVehicleEdges } = require('./utils/detection');
 const CAR_API_KEY = "iq9EVHlacJwRarx9cmy7VzXl";
 const CAR_SECRET_KEY = "ZqTw4y1denK2RS3SsD9VACpvIDNua0OF";
 
-const USE_BAIDU_API = false;
+const USE_BAIDU_API = true; // 开启百度API检测
+const BAIDU_MIN_CONFIDENCE = 0.6; // 百度API最低置信度阈值
 const DETECTION_INTERVAL_MS = 1200;
 const BAIDU_DETECTION_INTERVAL_MS = 2000; // 百度API检测间隔更长
 const DETECTION_CANVAS_MAX_WIDTH = 720;
@@ -118,6 +127,8 @@ export default {
       showVoiceHint: false,
       voiceHintText: '',
       showResultsModal: false,
+      speechReady: false, // 语音是否已就绪
+      userInteracted: false, // 用户是否已交互
       accessToken: null,
       detectionTimer: null,
       stream: null,
@@ -199,6 +210,13 @@ export default {
 
   async mounted() {
     document.addEventListener('visibilitychange', this.handleVisibilityChange);
+
+    // 添加用户交互监听器，以启用语音功能
+    this.addUserInteractionListeners();
+
+    // 初始化语音合成器
+    this.initSpeechSynthesis();
+
     await this.initApp();
   },
 
@@ -486,9 +504,15 @@ export default {
         return { hasVehicle: false };
       }
 
-      // 选择面积最大的car类型车辆
-      const vehicles = response.vehicle_info.filter(v => v.type === 'car');
+      // 选择面积最大的car类型车辆，并过滤低置信度结果
+      const MIN_CONFIDENCE = BAIDU_MIN_CONFIDENCE;
+      const vehicles = response.vehicle_info.filter(v =>
+        v.type === 'car' && v.probability >= MIN_CONFIDENCE
+      );
+
       if (!vehicles.length) {
+        console.log('未检测到高置信度车辆，最高置信度:',
+          Math.max(...response.vehicle_info.map(v => v.probability)).toFixed(3));
         return { hasVehicle: false };
       }
 
@@ -497,6 +521,8 @@ export default {
         const currentArea = current.location.width * current.location.height;
         return currentArea > maxArea ? current : maxVehicle;
       });
+
+      console.log(`检测到车辆，置信度: ${(vehicle.probability * 100).toFixed(1)}%`);
       const bbox = this.normalizeLocation(vehicle.location);
 
       return {
@@ -801,6 +827,66 @@ export default {
       }
     },
 
+    addUserInteractionListeners() {
+      // 监听用户交互事件
+      const events = ['touchstart', 'touchend', 'mousedown', 'click'];
+      const enableSpeech = () => {
+        this.userInteracted = true;
+        // 移除事件监听器
+        events.forEach(event => {
+          document.removeEventListener(event, enableSpeech);
+        });
+        // 测试语音功能
+        this.testSpeech();
+      };
+
+      events.forEach(event => {
+        document.addEventListener(event, enableSpeech, { once: true });
+      });
+    },
+
+    initSpeechSynthesis() {
+      if ('speechSynthesis' in window) {
+        // 等待语音合成器就绪
+        const checkVoices = () => {
+          const voices = speechSynthesis.getVoices();
+          if (voices.length > 0) {
+            this.speechReady = true;
+            console.log('语音合成器已就绪，可用语音:', voices.filter(v => v.lang.includes('zh')).length);
+          } else {
+            setTimeout(checkVoices, 100);
+          }
+        };
+
+        if (speechSynthesis.getVoices().length > 0) {
+          this.speechReady = true;
+        } else {
+          speechSynthesis.addEventListener('voiceschanged', checkVoices);
+        }
+      } else {
+        console.warn('此浏览器不支持语音合成功能');
+      }
+    },
+
+    testSpeech() {
+      if (this.speechReady && this.userInteracted) {
+        // 播放一个很短的测试音频以激活语音功能
+        const testUtterance = new SpeechSynthesisUtterance('');
+        testUtterance.volume = 0;
+        speechSynthesis.speak(testUtterance);
+        console.log('语音功能已激活');
+      }
+    },
+
+    enableSpeechManually() {
+      this.userInteracted = true;
+      this.testSpeech();
+      // 播放欢迎语音
+      setTimeout(() => {
+        this.playVoice('语音提示已启用，开始车辆检测', true);
+      }, 500);
+    },
+
     playVoice(text, forcePlay = false) {
       const now = Date.now();
 
@@ -809,16 +895,49 @@ export default {
         return;
       }
 
+      // 显示文字提示（无论语音是否工作都显示）
       this.voiceHintText = text;
       this.showVoiceHint = true;
       this.lastVoiceTime = now;
 
-      if ('speechSynthesis' in window) {
-        speechSynthesis.cancel();
-        const utterance = new SpeechSynthesisUtterance(text);
-        utterance.lang = 'zh-CN';
-        utterance.rate = 0.9;
-        speechSynthesis.speak(utterance);
+      // 语音播放
+      if ('speechSynthesis' in window && this.speechReady) {
+        try {
+          speechSynthesis.cancel();
+
+          const utterance = new SpeechSynthesisUtterance(text);
+          utterance.lang = 'zh-CN';
+          utterance.rate = 0.9;
+          utterance.volume = 1;
+          utterance.pitch = 1;
+
+          // 选择中文语音（如果可用）
+          const voices = speechSynthesis.getVoices();
+          const chineseVoice = voices.find(voice =>
+            voice.lang.includes('zh') || voice.lang.includes('cmn')
+          );
+          if (chineseVoice) {
+            utterance.voice = chineseVoice;
+          }
+
+          // 错误处理
+          utterance.onerror = (event) => {
+            console.error('语音播放失败:', event.error);
+          };
+
+          utterance.onstart = () => {
+            console.log('开始播放语音:', text);
+          };
+
+          speechSynthesis.speak(utterance);
+
+        } catch (error) {
+          console.error('语音播放异常:', error);
+        }
+      } else if (!this.speechReady) {
+        console.log('语音合成器未就绪，仅显示文字提示');
+      } else if (!this.userInteracted) {
+        console.log('需要用户交互后才能播放语音');
       }
 
       setTimeout(() => {
@@ -1221,6 +1340,47 @@ body {
 
 .voice-hint.show {
   opacity: 1;
+}
+
+.speech-enable-hint {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 70;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  cursor: pointer;
+}
+
+.speech-enable-hint.show {
+  opacity: 1;
+}
+
+.speech-hint-content {
+  background: rgba(0, 0, 0, 0.8);
+  color: white;
+  padding: 12px 16px;
+  border-radius: 20px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  backdrop-filter: blur(8px);
+}
+
+.speech-icon {
+  font-size: 18px;
+  animation: pulse 2s infinite;
+}
+
+.speech-text {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+@keyframes pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.1); }
 }
 
 .results-modal {
