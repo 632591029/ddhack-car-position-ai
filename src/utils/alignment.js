@@ -1,0 +1,158 @@
+const DEFAULT_THRESHOLDS = {
+  matchedConfidence: 0.85,
+  goodConfidence: 0.7,
+  adjustConfidence: 0.45,
+  matchedIoU: 0.6
+};
+
+function clamp(value, min, max) {
+  return Math.min(Math.max(value, min), max);
+}
+
+function normalizeBox(box) {
+  if (!box) {
+    return null;
+  }
+
+  const x = clamp(typeof box.x === 'number' ? box.x : 0, 0, 1);
+  const y = clamp(typeof box.y === 'number' ? box.y : 0, 0, 1);
+  const width = clamp(typeof box.width === 'number' ? box.width : 0.02, 0.02, 1 - x);
+  const height = clamp(typeof box.height === 'number' ? box.height : 0.02, 0.02, 1 - y);
+
+  return { x, y, width, height };
+}
+
+function computeIoU(boxA, boxB) {
+  if (!boxA || !boxB) {
+    return 0;
+  }
+
+  const left = Math.max(boxA.x, boxB.x);
+  const top = Math.max(boxA.y, boxB.y);
+  const right = Math.min(boxA.x + boxA.width, boxB.x + boxB.width);
+  const bottom = Math.min(boxA.y + boxA.height, boxB.y + boxB.height);
+
+  if (right <= left || bottom <= top) {
+    return 0;
+  }
+
+  const intersection = (right - left) * (bottom - top);
+  const areaA = boxA.width * boxA.height;
+  const areaB = boxB.width * boxB.height;
+  const union = areaA + areaB - intersection;
+
+  if (union <= 0) {
+    return 0;
+  }
+
+  return intersection / union;
+}
+
+function getAdjustmentHint(offsetX, offsetY, areaRatio) {
+  const hints = [];
+
+  if (offsetX > 0.02) {
+    hints.push('向左调整一点');
+  } else if (offsetX < -0.02) {
+    hints.push('向右调整一点');
+  }
+
+  if (offsetY > 0.02) {
+    hints.push('稍微降低镜头');
+  } else if (offsetY < -0.02) {
+    hints.push('稍微抬高镜头');
+  }
+
+  if (areaRatio < 0.85) {
+    hints.push('靠近车辆一些');
+  } else if (areaRatio > 1.2) {
+    hints.push('后退一步');
+  }
+
+  return hints.length ? hints.join('，') : '保持稳定，微调即可';
+}
+
+function analyzeAlignment(detection, expectedRegion, options = {}) {
+  const thresholds = { ...DEFAULT_THRESHOLDS, ...options.thresholds };
+
+  if (!detection || !detection.hasVehicle || !detection.bbox) {
+    return {
+      hasVehicle: false,
+      confidence: 0,
+      frameStatus: 'detecting',
+      message: '未检测到车辆，请移动手机对准车身',
+      detectionBox: null,
+      metrics: null
+    };
+  }
+
+  const expected = normalizeBox(expectedRegion);
+  const actual = normalizeBox(detection.bbox);
+
+  if (!expected || !actual) {
+    return {
+      hasVehicle: false,
+      confidence: 0,
+      frameStatus: 'detecting',
+      message: '未检测到车辆，请移动手机对准车身',
+      detectionBox: null,
+      metrics: null
+    };
+  }
+
+  const expectedCenterX = expected.x + expected.width / 2;
+  const expectedCenterY = expected.y + expected.height / 2;
+  const actualCenterX = actual.x + actual.width / 2;
+  const actualCenterY = actual.y + actual.height / 2;
+
+  const offsetX = actualCenterX - expectedCenterX;
+  const offsetY = actualCenterY - expectedCenterY;
+  const areaRatio = (actual.width * actual.height) / (expected.width * expected.height);
+  const sizePenalty = Math.abs(Math.log(areaRatio));
+  const centerPenalty = Math.sqrt(offsetX * offsetX + offsetY * offsetY);
+  const iou = computeIoU(actual, expected);
+  const baseScore = typeof detection.score === 'number' ? detection.score : 0.65;
+  const alignmentScore = Math.max(0, 1 - centerPenalty * 3 - sizePenalty * 0.9);
+  const confidence = Math.max(0, Math.min(1, baseScore * 0.4 + alignmentScore * 0.4 + iou * 0.2));
+
+  let frameStatus = 'detecting';
+  let message = '请继续调整位置';
+
+  if (confidence >= thresholds.matchedConfidence && iou > thresholds.matchedIoU) {
+    frameStatus = 'matched';
+    message = '位置优秀，可以拍照';
+  } else if (confidence >= thresholds.goodConfidence) {
+    frameStatus = 'good';
+    message = '位置良好，保持稳定';
+  } else if (confidence >= thresholds.adjustConfidence) {
+    frameStatus = 'adjust';
+    message = getAdjustmentHint(offsetX, offsetY, areaRatio);
+  } else {
+    frameStatus = 'detecting';
+    message = getAdjustmentHint(offsetX, offsetY, areaRatio);
+  }
+
+  return {
+    hasVehicle: true,
+    confidence,
+    frameStatus,
+    message,
+    detectionBox: actual,
+    metrics: {
+      offsetX,
+      offsetY,
+      areaRatio,
+      iou,
+      baseScore,
+      alignmentScore
+    }
+  };
+}
+
+module.exports = {
+  analyzeAlignment,
+  computeIoU,
+  getAdjustmentHint,
+  normalizeBox,
+  DEFAULT_THRESHOLDS
+};

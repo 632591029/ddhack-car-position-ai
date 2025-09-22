@@ -4,12 +4,13 @@
 
 ## ✨ 功能特性
 
-- 🎯 **四角度拍摄**：右前45°、右后45°、左侧面、正前方
-- 🤖 **AI实时检测**：基于百度AI的车辆识别和位置检测
-- 🔊 **语音指导**：全程语音提示，提升用户体验
-- 📱 **移动端优化**：专为手机拍摄设计，支持HTTPS和PWA
-- ✨ **智能边框**：动态边框指导，实时置信度显示
-- 📷 **照片质量检测**：自动检测照片质量，确保合格率
+- 🎯 **四角度拍摄**：左前、右前、右后、左后四个关键角度一键采集
+- 🧭 **虚线车身轮廓**：使用出题方提供的四套参考轮廓 PNG，保证司机看到的引导与验车要求一致
+- 🤖 **本地智能检测**：基于边缘分析的轻量级检测逻辑，调试阶段无需消耗云端配额
+- ☁️ **可选百度识别**：支持切换到百度车辆识别API，生产环境下可获得更稳健的识别结果
+- 🔊 **语音指导**：每一步均有语音提示，减少司机记忆负担
+- 📷 **照片质量自检**：模糊度、亮度实时评估，确保上传照片可用
+- 📱 **移动端优化**：全屏沉浸式界面，支持安全区内边距
 
 ## 🚀 快速开始
 
@@ -49,6 +50,25 @@ npm run build
 npm run preview
 ```
 
+## 🧪 调试与验证
+
+- `npm run test:alignment`：使用与前端完全一致的对齐打分逻辑，批量校验 `tests/alignment-cases.json` 中的示例检测框是否能得到正确状态。
+- `npm run detect:baidu`：在设置好 `BAIDU_API_KEY` 与 `BAIDU_SECRET_KEY` 后，调用真实的百度车辆识别API，并输出原始检测框及与虚线引导框的匹配结果。（需要手动准备图片路径）
+- 在 `src/App.vue` 将 `USE_SAMPLE_IMAGE_DEBUG` 设为 `true` 可直接加载提供的样例车辆图片（无需相机），观察完整的检测与提示流程，避免频繁消耗 API 调用额度。
+
+> 提示：`scripts/baidu-detect.cjs` 会自动读取图片、申请 access token、调用车辆检测接口，并使用 `src/utils/alignment.js` 中的同一套算法给出匹配提示，可直接用于线下真机测试。
+
+## 🖼️ 示例素材
+
+- **车辆引导轮廓**：
+  - 左前侧：`https://s3-gz01.didistatic.com/packages-mait/img/RC5OtnR65N1758512045195.png`
+  - 右前侧：`https://s3-gz01.didistatic.com/packages-mait/img/vPFvw45BoX1758512045345.png`
+  - 右后侧：`https://s3-gz01.didistatic.com/packages-mait/img/2OquYrEZxI1758512044128.png`
+  - 左后侧：`https://s3-gz01.didistatic.com/packages-mait/img/Kd0C5rriZv1758512044096.png`
+- **样例车辆图片**：`https://s3-gz01.didistatic.com/packages-mait/img/w0VyxKMAgG1758512666365.png`
+  - 直接开启 `USE_SAMPLE_IMAGE_DEBUG` 时会自动加载，用于在桌面环境复现完整流程。
+  - 若希望离线保存，可下载至 `tests/fixtures/` 目录配合脚本或自定义实验使用。
+
 ## 📱 使用方法
 
 1. **打开应用**：在支持摄像头的设备上打开应用
@@ -63,10 +83,10 @@ npm run preview
 
 - **前端框架**：Vue 3
 - **构建工具**：Vue CLI
-- **AI检测**：百度AI车辆识别API
+- **实时检测**：Canvas 边缘检测（默认） / 百度车辆识别API（可切换）
 - **语音合成**：Web Speech API
 - **摄像头**：MediaDevices API
-- **样式**：原生CSS + CSS变量
+- **样式**：原生 CSS + 自适应布局
 
 ## 📁 项目结构
 
@@ -98,14 +118,15 @@ devServer: {
 }
 ```
 
-### 百度AI配置
+### 检测模式配置
 
-在`src/App.vue`中配置你的百度AI密钥：
+项目默认使用**本地边缘检测**，调试阶段不会消耗任何云端配额。如需启用百度车辆识别API，在 `src/App.vue` 顶部调整开关：
 
 ```javascript
-const CAR_API_KEY = "your_api_key";
-const CAR_SECRET_KEY = "your_secret_key";
+const USE_BAIDU_API = true; // 默认为 false
 ```
+
+同时将 `CAR_API_KEY` 和 `CAR_SECRET_KEY` 修改为你的百度智能云密钥。生产环境推荐通过后端代理隐藏密钥，详细方案见 `API部署说明.md`。
 
 ## 📋 浏览器兼容性
 

@@ -1,0 +1,5 @@
+# API redirects handled by Functions
+/api/* /api/:splat 200
+
+# Fallback for SPA routing
+/* /index.html 200

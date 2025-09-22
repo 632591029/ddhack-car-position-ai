@@ -126,6 +126,18 @@ chrome.exe --user-data-dir="c:/chrome-dev-session" --disable-web-security
 3. 设置 `USE_MOCK_API = false`
 4. 更新API调用地址
 
+### 命令行联调工具
+
+仓库提供 `scripts/baidu-detect.cjs`，可直接在本地命令行读取图片、获取 access token 并完成车辆识别，示例：
+
+```bash
+export BAIDU_API_KEY=xxx
+export BAIDU_SECRET_KEY=yyy
+npm run detect:baidu -- --image ~/Pictures/right-front.jpg --expected 0.08,0.24,0.84,0.54
+```
+
+脚本会输出百度返回的原始 `location` 坐标，并调用与前端一致的 `analyzeAlignment` 逻辑给出对齐评分和提示，便于快速验证完整流程。
+
 ## 🔐 安全建议
 
 - ✅ API密钥存储在后端环境变量

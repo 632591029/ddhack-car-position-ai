@@ -1,0 +1,50 @@
+[
+  {
+    "name": "left-front-aligned",
+    "expected": { "x": 0.08, "y": 0.24, "width": 0.84, "height": 0.54 },
+    "detection": {
+      "hasVehicle": true,
+      "bbox": { "x": 0.09, "y": 0.245, "width": 0.82, "height": 0.535 },
+      "score": 0.92
+    },
+    "expectedStatus": "matched"
+  },
+  {
+    "name": "right-front-slight-offset",
+    "expected": { "x": 0.08, "y": 0.24, "width": 0.84, "height": 0.54 },
+    "detection": {
+      "hasVehicle": true,
+      "bbox": { "x": 0.12, "y": 0.27, "width": 0.78, "height": 0.52 },
+      "score": 0.8
+    },
+    "expectedStatus": "good"
+  },
+  {
+    "name": "right-rear-need-adjust",
+    "expected": { "x": 0.08, "y": 0.24, "width": 0.84, "height": 0.54 },
+    "detection": {
+      "hasVehicle": true,
+      "bbox": { "x": 0.16, "y": 0.32, "width": 0.7, "height": 0.46 },
+      "score": 0.63
+    },
+    "expectedStatus": "adjust"
+  },
+  {
+    "name": "left-rear-poor",
+    "expected": { "x": 0.08, "y": 0.24, "width": 0.84, "height": 0.54 },
+    "detection": {
+      "hasVehicle": true,
+      "bbox": { "x": 0.22, "y": 0.38, "width": 0.6, "height": 0.42 },
+      "score": 0.55
+    },
+    "expectedStatus": "detecting"
+  },
+  {
+    "name": "no-vehicle",
+    "expected": { "x": 0.08, "y": 0.24, "width": 0.84, "height": 0.54 },
+    "detection": {
+      "hasVehicle": false
+    },
+    "expectedStatus": "detecting"
+  }
+]

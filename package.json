@@ -10,7 +10,9 @@
     "build:prod": "vue-cli-service build --mode production",
     "preview": "npm run build && npx http-server dist",
     "lint": "vue-cli-service lint",
-    "lint:fix": "vue-cli-service lint --fix"
+    "lint:fix": "vue-cli-service lint --fix",
+    "test:alignment": "node scripts/verify-alignment.cjs",
+    "detect:baidu": "node scripts/baidu-detect.cjs"
   },
   "dependencies": {
     "core-js": "^3.8.3",
