@@ -109,13 +109,15 @@ function analyzeAlignment(detection, expectedRegion, options = {}) {
   const offsetX = actualCenterX - expectedCenterX;
   const offsetY = actualCenterY - expectedCenterY;
   const areaRatio = (actual.width * actual.height) / (expected.width * expected.height);
-  const sizePenalty = Math.abs(Math.log(areaRatio));
+  // 尺寸惩罚适度收敛，避免“稍小/稍大”时被过度惩罚
+  const sizePenalty = Math.min(Math.abs(Math.log(areaRatio)), 0.6);
   const centerPenalty = Math.sqrt(offsetX * offsetX + offsetY * offsetY);
   const iou = computeIoU(actual, expected);
   const baseScore = typeof detection.score === 'number' ? detection.score : 0.65;
 
-  const alignmentScore = Math.max(0, 1 - centerPenalty * 3 - sizePenalty * 0.9);
-  const confidence = Math.max(0, Math.min(1, baseScore * 0.4 + alignmentScore * 0.4 + iou * 0.2));
+  const alignmentScore = Math.max(0, 1 - centerPenalty * 2.6 - sizePenalty * 0.7);
+  // 提高IoU权重，更贴近“是否填满虚线框”的主观感受
+  const confidence = Math.max(0, Math.min(1, baseScore * 0.30 + alignmentScore * 0.35 + iou * 0.35));
 
   let frameStatus = 'detecting';
   let message = '请继续调整位置';

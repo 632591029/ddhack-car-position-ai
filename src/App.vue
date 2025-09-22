@@ -18,7 +18,7 @@
         >
           <div class="step-dot"></div>
           <div class="step-label">{{ step.title }}</div>
-        </div>
+      </div>
       </div>
       <div class="main-instruction">
         {{ currentStepText }}
@@ -33,7 +33,7 @@
       <div class="overlay">
         <div class="car-frame-large" :class="{ rear: isRearAngle }" :style="carFrameStyle"></div>
         <!-- <div class="expected-box" :style="expectedRegionStyle"></div> -->
-      </div>
+        </div>
       <div class="status-toast" :class="frameStatus">
         {{ statusText || '正在检测车辆轮廓' }}
       </div>
@@ -42,7 +42,7 @@
 
     <div class="voice-hint" :class="{ show: showVoiceHint }">
       {{ voiceHintText }}
-    </div>
+      </div>
 
     <!-- 语音激活提示 -->
     <div class="speech-enable-hint" :class="{ show: !userInteracted && speechReady }" @click="enableSpeechManually">
@@ -50,7 +50,7 @@
         <div class="speech-icon">🔊</div>
         <div class="speech-text">点击启用语音提示</div>
       </div>
-    </div>
+      </div>
 
 
     <!-- 调试信息面板 -->
@@ -64,7 +64,7 @@
           <div>检测到车辆: {{ debugInfo.hasVehicle ? '是' : '否' }}</div>
           <div>置信度: {{ (debugInfo.confidence * 100).toFixed(1) }}%</div>
           <div>状态: {{ debugInfo.frameStatus }}</div>
-        </div>
+      </div>
 
         <div v-if="debugInfo.detection" class="debug-section">
           <h4>车辆位置</h4>
@@ -72,7 +72,7 @@
           <div>Y: {{ (debugInfo.detection.y * 100).toFixed(1) }}%</div>
           <div>宽: {{ (debugInfo.detection.width * 100).toFixed(1) }}%</div>
           <div>高: {{ (debugInfo.detection.height * 100).toFixed(1) }}%</div>
-        </div>
+      </div>
 
         <div class="debug-section">
           <h4>预期位置</h4>
@@ -80,7 +80,7 @@
           <div>Y: {{ (debugInfo.expected.y * 100).toFixed(1) }}%</div>
           <div>宽: {{ (debugInfo.expected.width * 100).toFixed(1) }}%</div>
           <div>高: {{ (debugInfo.expected.height * 100).toFixed(1) }}%</div>
-        </div>
+    </div>
 
         <div v-if="debugInfo.metrics" class="debug-section">
           <h4>对齐指标</h4>
@@ -88,7 +88,7 @@
           <div>X偏移: {{ debugInfo.metrics.offsetX.toFixed(3) }}</div>
           <div>Y偏移: {{ debugInfo.metrics.offsetY.toFixed(3) }}</div>
           <div>面积比: {{ debugInfo.metrics.areaRatio.toFixed(3) }}</div>
-        </div>
+    </div>
 
         <div class="debug-section">
           <h4>建议</h4>
@@ -234,8 +234,31 @@ export default {
       return this.currentStep.title.includes('后');
     },
 
+    currentExpectedRegion() {
+      // 根据视频画面纵横比选择不同的期望区域预设
+      const ar = this.videoSize && this.videoSize.height
+        ? this.videoSize.width / this.videoSize.height
+        : 16 / 9;
+
+      const preset = ar > 1.7 ? 'wide' : 'normal';
+      const isRear = this.isRearAngle;
+
+      const regions = {
+        normal: {
+          front: { x: 0.08, y: 0.28, width: 0.78, height: 0.38 },
+          rear:  { x: 0.10, y: 0.32, width: 0.76, height: 0.36 },
+        },
+        wide: {
+          front: { x: 0.08, y: 0.26, width: 0.80, height: 0.34 },
+          rear:  { x: 0.10, y: 0.30, width: 0.78, height: 0.33 },
+        }
+      };
+
+      return isRear ? regions[preset].rear : regions[preset].front;
+    },
+
     expectedRegionStyle() {
-      const region = this.currentStep.expectedRegion;
+      const region = this.currentExpectedRegion;
       return {
         left: `${region.x * 100}%`,
         top: `${region.y * 100}%`,
@@ -284,9 +307,9 @@ export default {
           await this.loadSampleImage();
         } else {
           if (USE_BAIDU_API) {
-            await this.getBaiduAccessToken();
+        await this.getBaiduAccessToken();
           }
-          await this.initCamera();
+        await this.initCamera();
         }
         this.isLoading = false;
         this.playVoice(this.currentStep.voice, true); // 强制播放初始步骤语音
@@ -323,13 +346,13 @@ export default {
     },
 
     async initCamera() {
-      const constraints = {
-        video: {
-          facingMode: 'environment',
+        const constraints = {
+          video: {
+            facingMode: 'environment',
           width: { ideal: 1920 },
           height: { ideal: 1080 }
-        }
-      };
+          }
+        };
 
       try {
         this.stream = await navigator.mediaDevices.getUserMedia(constraints);
@@ -464,7 +487,7 @@ export default {
         if (detection && detection.hasVehicle) {
           this.consecutiveFailures = 0; // 重置失败计数
           this.lastErrorVoiceTime = null; // 清空错误语音时间戳
-          const analysis = analyzeAlignment(detection, this.currentStep.expectedRegion);
+          const analysis = analyzeAlignment(detection, this.currentExpectedRegion);
           this.updateDetectionStatus(analysis);
         } else {
           this.consecutiveFailures++; // 增加失败计数
@@ -490,7 +513,7 @@ export default {
         return { hasVehicle: false };
       }
 
-      const detection = detectVehicleEdges(frame.imageData, this.currentStep.expectedRegion);
+      const detection = detectVehicleEdges(frame.imageData, this.currentExpectedRegion);
 
       if (!detection || !detection.hasVehicle) {
         return { hasVehicle: false };
@@ -579,7 +602,7 @@ export default {
       console.log(`检测到车辆，置信度: ${(vehicle.probability * 100).toFixed(1)}%`);
       const bbox = this.normalizeLocation(vehicle.location);
 
-      return {
+        return {
         hasVehicle: true,
         bbox,
         score: vehicle.score || 0.8,
@@ -632,7 +655,7 @@ export default {
           frameStatus: result.frameStatus || 'detecting',
           message: result.message,
           detection: result.detectionBox,
-          expected: this.currentStep.expectedRegion,
+          expected: this.currentExpectedRegion,
           metrics: result.metrics
         };
       }
@@ -678,7 +701,7 @@ export default {
     },
 
     useMockDetection() {
-      const expected = this.currentStep.expectedRegion;
+      const expected = this.currentExpectedRegion;
       // 减少随机抖动，让mock数据更精确对齐
       const jitterX = (Math.random() - 0.5) * 0.02;
       const jitterY = (Math.random() - 0.5) * 0.02;
@@ -695,7 +718,7 @@ export default {
         score: 0.85 + Math.random() * 0.1 // 提高基础分数到0.85-0.95
       };
 
-      const analysis = analyzeAlignment(detection, this.currentStep.expectedRegion);
+      const analysis = analyzeAlignment(detection, this.currentExpectedRegion);
       this.updateDetectionStatus(analysis);
     },
 
@@ -871,7 +894,7 @@ export default {
       }
 
       this.isCapturing = true;
-      this.stopDetection();
+        this.stopDetection();
 
       try {
         const imageDataUrl = this.captureFrame({ fullResolution: true });
@@ -884,7 +907,7 @@ export default {
         if (!qualityResult.passed) {
           this.playVoice(qualityResult.reason || '照片质量不佳，请重新拍摄');
           await this.delay(1200);
-          this.startDetection();
+            this.startDetection();
           return;
         }
 
@@ -915,7 +938,7 @@ export default {
         this.consecutiveFailures = 0; // 重置失败计数
         this.lastErrorVoiceTime = null; // 清空错误语音时间戳
           this.playVoice(this.currentStep.voice, true); // 强制播放下一步骤语音
-        this.startDetection();
+          this.startDetection();
       } else {
         this.showResults();
       }
@@ -1004,9 +1027,9 @@ export default {
         try {
           speechSynthesis.cancel();
 
-          const utterance = new SpeechSynthesisUtterance(text);
-          utterance.lang = 'zh-CN';
-          utterance.rate = 0.9;
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.lang = 'zh-CN';
+        utterance.rate = 0.9;
           utterance.volume = 1;
           utterance.pitch = 1;
 
@@ -1028,7 +1051,7 @@ export default {
             console.log('开始播放语音:', text);
           };
 
-          speechSynthesis.speak(utterance);
+        speechSynthesis.speak(utterance);
 
         } catch (error) {
           console.error('语音播放异常:', error);
@@ -1147,7 +1170,7 @@ export default {
       this.showResultsModal = false;
 
       this.playVoice(this.currentStep.voice, true); // 强制播放重置步骤语音
-      this.startDetection();
+        this.startDetection();
     },
 
     cleanup() {
