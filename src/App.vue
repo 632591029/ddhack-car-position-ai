@@ -663,20 +663,20 @@ export default {
       this.logDetectionMetrics(result);
 
       // 自动拍照：matched 或（good 且 IoU、面积比充足）时均可触发
-      const autoThreshold = DEBUG_MODE ? 0.65 : 0.8;
+      const autoThreshold = DEBUG_MODE ? 0.62 : 0.77; // 适中的自动拍照阈值
       const metrics = result.metrics || {};
-      const goodEnoughOverlap = (metrics.iou || 0) >= 0.62 && (metrics.areaRatio || 0) >= 0.72;
+      const goodEnoughOverlap = (metrics.iou || 0) >= 0.58 && (metrics.areaRatio || 0) >= 0.72; // 适中的重叠要求
       const canAuto = (
         (this.frameStatus === 'matched' && this.confidence >= autoThreshold) ||
         (this.frameStatus === 'good' && this.confidence >= (autoThreshold - 0.05) && goodEnoughOverlap)
       );
-      if (canAuto && !this.isCapturing) {
+      if (canAuto && !this.isCapturing && !this.capturedPhotos[this.currentStepIndex]) {
         const now = Date.now();
-        if (!this.lastGoodDetectionTime || now - this.lastGoodDetectionTime > 3000) {
+        if (!this.lastGoodDetectionTime || now - this.lastGoodDetectionTime > 2500) { // 减少等待时间到2.5秒
           this.playVoice('对准成功，正在拍照', true); // 强制播放成功语音
           this.lastGoodDetectionTime = now;
           this.showSuccessEffect(); // 显示成功效果
-          setTimeout(() => this.autoCapture(), 1000); // 延迟1秒自动拍照，给用户看到效果
+          setTimeout(() => this.autoCapture(), 800); // 减少延迟到0.8秒，更快响应
         }
       }
 
@@ -798,11 +798,11 @@ export default {
       }
 
       // 放宽通过条件：matched 直接通过；
-      // 或 good 且 置信度>=0.65 且 IoU/面积比达到阈值
+      // 或 good 且 置信度>=0.60 且 IoU/面积比达到阈值
       const metrics = this.lastDetectionMetrics || {};
-      const overlapOK = (metrics.iou || 0) >= 0.62 && (metrics.areaRatio || 0) >= 0.72;
+      const overlapOK = (metrics.iou || 0) >= 0.58 && (metrics.areaRatio || 0) >= 0.70;
       const canPass = this.frameStatus === 'matched' ||
-        (this.frameStatus === 'good' && this.confidence >= 0.65 && overlapOK);
+        (this.frameStatus === 'good' && this.confidence >= 0.60 && overlapOK);
 
       if (!canPass) {
         return { passed: false, reason: '车辆未完全进入虚线框，请重新对准' };
@@ -896,12 +896,12 @@ export default {
     },
 
     async autoCapture() {
-      if (this.isCapturing) {
-        return;
+      if (this.isCapturing || this.capturedPhotos[this.currentStepIndex]) {
+        return; // 如果正在拍照或当前步骤已拍摄，直接返回
       }
 
       this.isCapturing = true;
-        this.stopDetection();
+      this.stopDetection();
 
       try {
         const imageDataUrl = this.captureFrame({ fullResolution: true });
@@ -914,10 +914,11 @@ export default {
         if (!qualityResult.passed) {
           this.playVoice(qualityResult.reason || '照片质量不佳，请重新拍摄');
           await this.delay(1200);
-            this.startDetection();
+          this.startDetection();
           return;
         }
 
+        // 保存照片
         this.capturedPhotos = {
           ...this.capturedPhotos,
           [this.currentStepIndex]: imageDataUrl
@@ -925,6 +926,8 @@ export default {
 
         this.playVoice('照片已保存');
         await this.delay(800);
+
+        // 立即进入下一步，并确保UI更新
         this.nextStep();
       } catch (error) {
         console.error('拍照失败:', error);
@@ -944,8 +947,15 @@ export default {
         this.statusText = '';
         this.consecutiveFailures = 0; // 重置失败计数
         this.lastErrorVoiceTime = null; // 清空错误语音时间戳
+
+        // 强制触发Vue响应式更新
+        this.$nextTick(() => {
           this.playVoice(this.currentStep.voice, true); // 强制播放下一步骤语音
-          this.startDetection();
+          // 延迟一点再开始检测，确保UI已更新
+          setTimeout(() => {
+            this.startDetection();
+          }, 500);
+        });
       } else {
         this.showResults();
       }

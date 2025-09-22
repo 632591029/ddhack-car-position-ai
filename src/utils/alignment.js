@@ -1,8 +1,8 @@
 const DEFAULT_THRESHOLDS = {
-  matchedConfidence: 0.75, // 下调，让“已基本贴合”更容易进入matched
-  goodConfidence: 0.65,
+  matchedConfidence: 0.72, // 适中的阈值，不会太松
+  goodConfidence: 0.62,
   adjustConfidence: 0.45,
-  matchedIoU: 0.6
+  matchedIoU: 0.58  // 适中的IoU要求
 };
 
 function clamp(value, min, max) {
@@ -117,9 +117,17 @@ function analyzeAlignment(detection, expectedRegion, options = {}) {
   const iou = computeIoU(actual, expected);
   const baseScore = typeof detection.score === 'number' ? detection.score : 0.65;
 
-  const alignmentScore = Math.max(0, 1 - centerPenalty * 2.6 - sizePenalty * 0.7);
-  // 提高IoU权重，更贴近“是否填满虚线框”的主观感受
-  const confidence = Math.max(0, Math.min(1, baseScore * 0.30 + alignmentScore * 0.35 + iou * 0.35));
+  const alignmentScore = Math.max(0, 1 - centerPenalty * 2.2 - sizePenalty * 0.6); // 降低惩罚强度
+
+  // 改进置信度计算：更重视检测基础分数，适度考虑对齐情况
+  // 当IoU较高时，给予额外奖励
+  const iouBonus = iou > 0.6 ? Math.min(0.15, (iou - 0.6) * 0.375) : 0; // 高IoU时额外加分
+  const confidence = Math.max(0, Math.min(1,
+    baseScore * 0.40 +          // 提高基础检测分数权重到40%
+    alignmentScore * 0.35 +     // 对齐分数35%
+    iou * 0.25 +               // IoU权重25%
+    iouBonus                   // 高IoU奖励
+  ));
 
   let frameStatus = 'detecting';
   let message = '请继续调整位置';
