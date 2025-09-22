@@ -12,7 +12,7 @@ async function proxyToBaidu(context, prefix) {
   try {
     var url = new URL(request.url);
     var apiPath = url.pathname.replace('/api/', '');
-    var targetUrl = 'https://aip.baidubce.com/' + apiPath;
+    var targetUrl = 'https://aip.baidubce.com/' + apiPath + url.search;
 
     var requestOptions = {
       method: request.method,
