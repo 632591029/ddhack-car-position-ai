@@ -72,6 +72,7 @@ function getAdjustmentHint(offsetX, offsetY, areaRatio) {
   return hints.length ? hints.join('，') : '保持稳定，微调即可';
 }
 
+
 function analyzeAlignment(detection, expectedRegion, options = {}) {
   const thresholds = { ...DEFAULT_THRESHOLDS, ...options.thresholds };
 
@@ -112,6 +113,7 @@ function analyzeAlignment(detection, expectedRegion, options = {}) {
   const centerPenalty = Math.sqrt(offsetX * offsetX + offsetY * offsetY);
   const iou = computeIoU(actual, expected);
   const baseScore = typeof detection.score === 'number' ? detection.score : 0.65;
+
   const alignmentScore = Math.max(0, 1 - centerPenalty * 3 - sizePenalty * 0.9);
   const confidence = Math.max(0, Math.min(1, baseScore * 0.4 + alignmentScore * 0.4 + iou * 0.2));
 

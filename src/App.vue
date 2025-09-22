@@ -21,7 +21,7 @@
         </div>
       </div>
       <div class="main-instruction">
-        {{ currentStep.title }} · {{ currentStep.desc }}
+        {{ currentStepText }}
       </div>
       <div class="sub-instruction">
         {{ statusText || '请保持手机稳定，缓慢移动以对准车辆轮廓' }}
@@ -31,7 +31,7 @@
     <div class="camera-container" v-show="!isLoading">
       <video ref="videoRef" id="videoElement" autoplay playsinline muted></video>
       <div class="overlay">
-        <div class="car-frame-large" :style="carFrameStyle"></div>
+        <div class="car-frame-large" :class="{ rear: isRearAngle }" :style="carFrameStyle"></div>
         <!-- <div class="expected-box" :style="expectedRegionStyle"></div> -->
       </div>
       <div class="status-toast" :class="frameStatus">
@@ -51,6 +51,7 @@
         <div class="speech-text">点击启用语音提示</div>
       </div>
     </div>
+
 
     <!-- 调试信息面板 -->
     <div v-if="DEBUG_MODE && debugInfo" class="debug-panel">
@@ -196,28 +197,28 @@ export default {
           title: '左前侧',
           desc: '请将车辆左前侧对齐虚线轮廓，让车头露出完整',
           overlayImage: OVERLAY_LEFT_FRONT,
-          expectedRegion: { x: 0.05, y: 0.20, width: 0.90, height: 0.60 },
+          expectedRegion: { x: 0.075, y: 0.22, width: 0.85, height: 0.56 },
           voice: '请对准车辆左前侧'
         },
         {
           title: '右前侧',
           desc: '请转到车辆右前侧，让车头贴合虚线轮廓',
           overlayImage: OVERLAY_RIGHT_FRONT,
-          expectedRegion: { x: 0.05, y: 0.20, width: 0.90, height: 0.60 },
+          expectedRegion: { x: 0.075, y: 0.22, width: 0.85, height: 0.56 },
           voice: '请对准车辆右前侧'
         },
         {
           title: '右后侧',
           desc: '请移动到车辆右后侧，对齐虚线框位置',
           overlayImage: OVERLAY_RIGHT_REAR,
-          expectedRegion: { x: 0.08, y: 0.25, width: 0.84, height: 0.55 },
+          expectedRegion: { x: 0.075, y: 0.27, width: 0.85, height: 0.46 },
           voice: '请对准车辆右后侧'
         },
         {
           title: '左后侧',
           desc: '请移动到车辆左后侧，保持车辆充满虚线轮廓',
           overlayImage: OVERLAY_LEFT_REAR,
-          expectedRegion: { x: 0.08, y: 0.25, width: 0.84, height: 0.55 },
+          expectedRegion: { x: 0.075, y: 0.27, width: 0.85, height: 0.46 },
           voice: '请对准车辆左后侧'
         }
       ]
@@ -229,6 +230,9 @@ export default {
       return this.steps[this.currentStepIndex];
     },
 
+    isRearAngle() {
+      return this.currentStep.title.includes('后');
+    },
 
     expectedRegionStyle() {
       const region = this.currentStep.expectedRegion;
@@ -240,19 +244,19 @@ export default {
       };
     },
 
-
     carFrameStyle() {
       const style = {
         backgroundImage: `url(${this.currentStep.overlayImage})`
       };
 
-      if (this.currentStep.overlayTransform) {
-        style.transform = this.currentStep.overlayTransform;
-      } else {
-        style.transform = 'none';
-      }
-
       return style;
+    },
+
+    currentStepText() {
+      if (this.capturedPhotos[this.currentStepIndex]) {
+        return '已截取';
+      }
+      return `请对准车辆${this.currentStep.title}`;
     }
   },
 
@@ -451,7 +455,9 @@ export default {
         if (USE_BAIDU_API && this.accessToken) {
           detection = await this.detectWithBaidu();
         } else {
-          detection = this.detectWithEdgeDetection();
+          // 直接使用mock数据，跳过边缘检测
+          this.useMockDetection();
+          return;
         }
 
         // 只有检测到车辆时才进行对齐分析
@@ -673,19 +679,20 @@ export default {
 
     useMockDetection() {
       const expected = this.currentStep.expectedRegion;
-      const jitterX = (Math.random() - 0.5) * 0.06;
-      const jitterY = (Math.random() - 0.5) * 0.05;
-      const scale = 1 + (Math.random() - 0.5) * 0.15;
+      // 减少随机抖动，让mock数据更精确对齐
+      const jitterX = (Math.random() - 0.5) * 0.02;
+      const jitterY = (Math.random() - 0.5) * 0.02;
+      const scale = 1 + (Math.random() - 0.5) * 0.05;
 
       const width = Math.min(0.9, Math.max(0.3, expected.width * scale));
-      const height = Math.min(0.9, Math.max(0.3, expected.height * (scale * 0.92)));
+      const height = Math.min(0.9, Math.max(0.3, expected.height * scale));
       const x = Math.min(Math.max(expected.x + jitterX, 0.02), 1 - width - 0.02);
       const y = Math.min(Math.max(expected.y + jitterY, 0.02), 1 - height - 0.02);
 
       const detection = {
         hasVehicle: true,
         bbox: { x, y, width, height },
-        score: 0.6 + Math.random() * 0.3
+        score: 0.85 + Math.random() * 0.1 // 提高基础分数到0.85-0.95
       };
 
       const analysis = analyzeAlignment(detection, this.currentStep.expectedRegion);
@@ -716,6 +723,24 @@ export default {
         return canvas.toDataURL('image/jpeg', 0.92);
       }
 
+      // Mock模式：生成模拟图片
+      if (!USE_BAIDU_API) {
+        const canvas = document.createElement('canvas');
+        canvas.width = fullResolution ? 1920 : 1280;
+        canvas.height = fullResolution ? 1080 : 720;
+
+        const ctx = canvas.getContext('2d');
+        // 生成简单的模拟图片（灰色背景 + 当前步骤文字）
+        ctx.fillStyle = '#f0f0f0';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = '#333';
+        ctx.font = '48px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText(`Mock ${this.currentStep.title}`, canvas.width/2, canvas.height/2);
+
+        return canvas.toDataURL('image/jpeg', 0.92);
+      }
+
       if (!video || !video.videoWidth) {
         return null;
       }
@@ -738,6 +763,14 @@ export default {
     },
 
     checkPhotoQuality() {
+      // Mock模式直接通过质量检查
+      if (!USE_BAIDU_API) {
+        return {
+          passed: true,
+          score: 0.9
+        };
+      }
+
       if (this.confidence < 0.75) {
         return {
           passed: false,
@@ -861,7 +894,7 @@ export default {
         };
 
         this.playVoice('照片已保存');
-        await this.delay(700);
+        await this.delay(800);
         this.nextStep();
       } catch (error) {
         console.error('拍照失败:', error);
@@ -951,6 +984,7 @@ export default {
     toggleDebugPanel() {
       this.showDebugPanel = !this.showDebugPanel;
     },
+
 
     playVoice(text, forcePlay = false) {
       const now = Date.now();
@@ -1303,13 +1337,22 @@ body {
 
 .car-frame-large {
   position: absolute;
-  inset: 0;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 85.3vw; /* 640/750 = 85.3% */
+  height: 55.7vw; /* 418/750 = 55.7% for front */
   background-position: center;
   background-repeat: no-repeat;
   background-size: contain;
   opacity: 0.9;
   filter: drop-shadow(0 0 18px rgba(255, 222, 102, 0.75));
-  transition: transform 0.3s ease;
+  transition: all 0.3s ease;
+}
+
+/* 后侧角度使用不同高度 */
+.car-frame-large.rear {
+  height: 46.4vw; /* 348/750 = 46.4% for rear */
 }
 
 .expected-box {
@@ -1447,6 +1490,7 @@ body {
   0%, 100% { transform: scale(1); }
   50% { transform: scale(1.1); }
 }
+
 
 .debug-panel {
   position: fixed;
