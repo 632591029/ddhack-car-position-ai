@@ -662,9 +662,15 @@ export default {
 
       this.logDetectionMetrics(result);
 
-      // 自动拍照：检测到对准状态且置信度够高 (调试模式降低阈值)
-      const autoThreshold = DEBUG_MODE ? 0.7 : 0.85;
-      if (this.frameStatus === 'matched' && this.confidence > autoThreshold && !this.isCapturing) {
+      // 自动拍照：matched 或（good 且 IoU、面积比充足）时均可触发
+      const autoThreshold = DEBUG_MODE ? 0.65 : 0.8;
+      const metrics = result.metrics || {};
+      const goodEnoughOverlap = (metrics.iou || 0) >= 0.62 && (metrics.areaRatio || 0) >= 0.72;
+      const canAuto = (
+        (this.frameStatus === 'matched' && this.confidence >= autoThreshold) ||
+        (this.frameStatus === 'good' && this.confidence >= (autoThreshold - 0.05) && goodEnoughOverlap)
+      );
+      if (canAuto && !this.isCapturing) {
         const now = Date.now();
         if (!this.lastGoodDetectionTime || now - this.lastGoodDetectionTime > 3000) {
           this.playVoice('对准成功，正在拍照', true); // 强制播放成功语音

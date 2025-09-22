@@ -1,6 +1,6 @@
 const DEFAULT_THRESHOLDS = {
-  matchedConfidence: 0.85,
-  goodConfidence: 0.7,
+  matchedConfidence: 0.75, // 下调，让“已基本贴合”更容易进入matched
+  goodConfidence: 0.65,
   adjustConfidence: 0.45,
   matchedIoU: 0.6
 };
