@@ -57,7 +57,7 @@ function detectVehicleEdges(imageData, expectedRegion, options = {}) {
   }
 
   const regionArea = Math.max(1, (endX - startX) * (endY - startY));
-  const minimumEdgePixels = Math.max(120, regionArea * 0.003);
+  const minimumEdgePixels = Math.max(180, regionArea * 0.005); // 提高边缘像素要求，更严格检测
 
   if (edgePixels < minimumEdgePixels || minX >= maxX || minY >= maxY) {
     return {
@@ -69,8 +69,8 @@ function detectVehicleEdges(imageData, expectedRegion, options = {}) {
     };
   }
 
-  const widthPixels = Math.max(12, maxX - minX);
-  const heightPixels = Math.max(12, maxY - minY);
+  const widthPixels = Math.max(20, maxX - minX); // 提高最小尺寸要求
+  const heightPixels = Math.max(20, maxY - minY);
 
   const bbox = {
     x: minX / width,
@@ -80,7 +80,8 @@ function detectVehicleEdges(imageData, expectedRegion, options = {}) {
   };
 
   const density = edgePixels / regionArea;
-  const score = Math.max(0.45, Math.min(0.95, density * 3.6));
+  // 更严格的评分，要求更高的边缘密度
+  const score = Math.max(0.50, Math.min(0.95, density * 4.2));
 
   return {
     hasVehicle: true,

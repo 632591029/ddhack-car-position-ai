@@ -154,7 +154,7 @@ const CAR_SECRET_KEY = "ZqTw4y1denK2RS3SsD9VACpvIDNua0OF";
 // 本地开发模式：检测hostname自动启用mock模式
 const IS_LOCAL_DEV = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
 const USE_BAIDU_API = !IS_LOCAL_DEV; // 本地开发时关闭百度API
-const BAIDU_MIN_CONFIDENCE = 0.6; // 百度API最低置信度阈值
+const BAIDU_MIN_CONFIDENCE = 0.75; // 提高百度API置信度阈值，防止误检地面
 const DETECTION_INTERVAL_MS = IS_LOCAL_DEV ? 800 : 1200; // 本地开发时更快检测
 const BAIDU_DETECTION_INTERVAL_MS = 1400; // 百度API检测间隔，平衡响应速度和API成本
 const DEBUG_MODE = true; // 调试模式，显示详细信息
@@ -620,10 +620,20 @@ export default {
       console.log(`检测到车辆，置信度: ${(vehicle.probability * 100).toFixed(1)}%`);
       const bbox = this.normalizeLocation(vehicle.location);
 
+      // 车辆尺寸合理性检查：防止误检小物体或异常大的区域
+      const vehicleArea = bbox.width * bbox.height;
+      const isReasonableSize = vehicleArea >= 0.05 && vehicleArea <= 0.9; // 车辆应该占图像5%-90%
+      const hasValidAspectRatio = bbox.width/bbox.height >= 0.5 && bbox.width/bbox.height <= 3.0; // 宽高比合理
+
+      if (!isReasonableSize || !hasValidAspectRatio) {
+        console.log(`车辆尺寸不合理: 面积${(vehicleArea*100).toFixed(1)}%, 宽高比${(bbox.width/bbox.height).toFixed(2)}`);
+        return { hasVehicle: false };
+      }
+
         return {
         hasVehicle: true,
         bbox,
-        score: vehicle.score || 0.8,
+        score: vehicle.probability, // 使用百度的置信度
         raw: vehicle
       };
     },
@@ -689,13 +699,16 @@ export default {
       const autoThreshold = DEBUG_MODE ? 0.65 : 0.75; // 降低阈值，更容易触发
       const metrics = result.metrics || {};
 
-      // 重点关注：1.车辆完整性(面积) 2.基本对准(IoU不要太严格)
-      const hasCompleteVehicle = (metrics.areaRatio || 0) >= 0.65; // 车辆面积占比够大
-      const roughlyAligned = (metrics.iou || 0) >= 0.45; // IoU要求放宽，大致对准即可
+      // 严格检查：必须真正检测到车辆
+      const hasVehicleDetected = result.hasVehicle === true; // 必须检测到车辆
+      const hasGoodConfidence = this.confidence >= autoThreshold; // 置信度够高
+      const hasCompleteVehicle = (metrics.areaRatio || 0) >= 0.75; // 提高面积要求，确保完整车辆
+      const roughlyAligned = (metrics.iou || 0) >= 0.50; // 稍微提高IoU要求
 
-      const canAuto = IS_LOCAL_DEV || (  // 本地开发时强制通过
-        this.confidence >= autoThreshold && hasCompleteVehicle && roughlyAligned
-      );
+      // 基础检测分数也要够高，防止误检
+      const hasGoodBaseScore = (metrics.baseScore || 0) >= 0.60;
+
+      const canAuto = hasVehicleDetected && hasGoodConfidence && hasCompleteVehicle && roughlyAligned && hasGoodBaseScore;
       // 如果当前步骤已拍摄完成，立即进入下一步
       if (this.capturedPhotos[this.currentStepIndex] && !this.isCapturing) {
         this.stopDetection(); // 停止检测
@@ -707,7 +720,7 @@ export default {
         const now = Date.now();
         const waitTime = IS_LOCAL_DEV ? 300 : 800; // 缩短等待时间，提高响应速度
         if (!this.lastGoodDetectionTime || now - this.lastGoodDetectionTime > waitTime) {
-          this.addDebugLog(`满足拍照条件(置信度:${result.confidence?.toFixed(2)}, 面积比:${(metrics.areaRatio||0).toFixed(2)}, IoU:${(metrics.iou||0).toFixed(2)})`);
+          this.addDebugLog(`✅拍照条件全部满足 - 置信度:${result.confidence?.toFixed(2)}, 面积比:${(metrics.areaRatio||0).toFixed(2)}, IoU:${(metrics.iou||0).toFixed(2)}, 基础分:${(metrics.baseScore||0).toFixed(2)}`);
           this.stopDetection(); // 立即停止检测，防止重复触发
           this.playVoice('对准成功，正在拍照', true); // 强制播放成功语音
           this.lastGoodDetectionTime = now;
@@ -715,6 +728,16 @@ export default {
           // 立即拍照，不要延迟避免时机不一致
           this.autoCapture();
         }
+      } else if (result.hasVehicle) {
+        // 检测到车辆但条件不满足时的详细信息
+        const issues = [];
+        if (!hasVehicleDetected) issues.push('未检测到车辆');
+        if (!hasGoodConfidence) issues.push(`置信度不足(${result.confidence?.toFixed(2)}<${autoThreshold})`);
+        if (!hasCompleteVehicle) issues.push(`车辆不完整(面积${(metrics.areaRatio||0).toFixed(2)}<0.75)`);
+        if (!roughlyAligned) issues.push(`对准不够(IoU${(metrics.iou||0).toFixed(2)}<0.50)`);
+        if (!hasGoodBaseScore) issues.push(`基础分不足(${(metrics.baseScore||0).toFixed(2)}<0.60)`);
+
+        this.addDebugLog(`❌拍照条件未满足: ${issues.join(', ')}`);
       }
 
     },
