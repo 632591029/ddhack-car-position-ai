@@ -642,6 +642,11 @@ export default {
         return;
       }
 
+      // 如果正在拍照或已经拍照，跳过检测更新
+      if (this.isCapturing || this.capturedPhotos[this.currentStepIndex]) {
+        return;
+      }
+
       this.confidence = result.confidence || 0;
       this.statusText = result.message;
       this.frameStatus = result.frameStatus || 'detecting';
@@ -680,11 +685,13 @@ export default {
 
       if (canAuto && !this.isCapturing) {
         const now = Date.now();
-        if (!this.lastGoodDetectionTime || now - this.lastGoodDetectionTime > 2500) { // 减少等待时间到2.5秒
+        if (!this.lastGoodDetectionTime || now - this.lastGoodDetectionTime > 3000) { // 增加到3秒防止重复
+          console.log('触发自动拍照，停止检测');
+          this.stopDetection(); // 立即停止检测，防止重复触发
           this.playVoice('对准成功，正在拍照', true); // 强制播放成功语音
           this.lastGoodDetectionTime = now;
           this.showSuccessEffect(); // 显示成功效果
-          setTimeout(() => this.autoCapture(), 800); // 减少延迟到0.8秒，更快响应
+          setTimeout(() => this.autoCapture(), 600); // 减少延迟
         }
       }
 
@@ -971,7 +978,7 @@ export default {
         this.statusText = '';
         this.consecutiveFailures = 0;
         this.lastErrorVoiceTime = null;
-        this.lastGoodDetectionTime = null;
+        // 不重置lastGoodDetectionTime，防止新步骤立即拍照
 
         console.log('步骤已更新到:', this.currentStepIndex, '步骤标题:', this.currentStep.title);
 
@@ -982,9 +989,11 @@ export default {
         setTimeout(() => {
           this.playVoice(this.currentStep.voice, true);
           setTimeout(() => {
+            // 重置拍照时间戳，允许新步骤拍照
+            this.lastGoodDetectionTime = null;
             this.startDetection();
-          }, 800);
-        }, 500);
+          }, 1000);
+        }, 800);
       } else {
         console.log('所有步骤完成，显示结果');
         this.showResults();
