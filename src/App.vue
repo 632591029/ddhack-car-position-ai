@@ -698,13 +698,15 @@ export default {
 
       if (canAuto && !this.isCapturing) {
         const now = Date.now();
-        const waitTime = IS_LOCAL_DEV ? 500 : 3000; // 本地开发只等0.5秒，生产环境3秒
+        const waitTime = IS_LOCAL_DEV ? 500 : 1500; // 缩短等待时间到1.5秒，减少不一致窗口
         if (!this.lastGoodDetectionTime || now - this.lastGoodDetectionTime > waitTime) {
+          this.addDebugLog('满足拍照条件，立即拍照');
           this.stopDetection(); // 立即停止检测，防止重复触发
           this.playVoice('对准成功，正在拍照', true); // 强制播放成功语音
           this.lastGoodDetectionTime = now;
           this.showSuccessEffect(); // 显示成功效果
-          setTimeout(() => this.autoCapture(), 600); // 减少延迟
+          // 立即拍照，不要延迟避免时机不一致
+          this.autoCapture();
         }
       }
 
@@ -892,6 +894,21 @@ export default {
       this.addDebugLog('开始自动拍照流程');
       this.isCapturing = true;
       this.stopDetection();
+
+      // 在拍照前再次检查当前检测状态，避免拍到地面等无效画面
+      if (!IS_LOCAL_DEV) {
+        const metrics = this.lastDetectionMetrics || {};
+        const iouOK = (metrics.iou || 0) >= 0.60; // 要求较高的IoU
+        const areaOK = (metrics.areaRatio || 0) >= 0.70; // 要求合理的面积比
+
+        if (!iouOK || !areaOK) {
+          this.addDebugLog(`拍照前检查失败: IoU=${(metrics.iou || 0).toFixed(3)} 面积=${(metrics.areaRatio || 0).toFixed(3)}`);
+          this.isCapturing = false;
+          this.startDetection();
+          return;
+        }
+        this.addDebugLog('拍照前检查通过');
+      }
 
       try {
         const imageDataUrl = this.captureFrame({ fullResolution: true });
