@@ -1,8 +1,8 @@
 const DEFAULT_THRESHOLDS = {
-  matchedConfidence: 0.72, // 适中的阈值，不会太松
-  goodConfidence: 0.62,
-  adjustConfidence: 0.45,
-  matchedIoU: 0.58  // 适中的IoU要求
+  matchedConfidence: 0.78, // 提高阈值，更严格
+  goodConfidence: 0.68,
+  adjustConfidence: 0.50,
+  matchedIoU: 0.65  // 提高IoU要求，确保真的贴合
 };
 
 function clamp(value, min, max) {
@@ -117,15 +117,15 @@ function analyzeAlignment(detection, expectedRegion, options = {}) {
   const iou = computeIoU(actual, expected);
   const baseScore = typeof detection.score === 'number' ? detection.score : 0.65;
 
-  const alignmentScore = Math.max(0, 1 - centerPenalty * 2.2 - sizePenalty * 0.6); // 降低惩罚强度
+  const alignmentScore = Math.max(0, 1 - centerPenalty * 2.8 - sizePenalty * 0.8); // 提高惩罚强度，更严格
 
-  // 改进置信度计算：更重视检测基础分数，适度考虑对齐情况
-  // 当IoU较高时，给予额外奖励
-  const iouBonus = iou > 0.6 ? Math.min(0.15, (iou - 0.6) * 0.375) : 0; // 高IoU时额外加分
+  // 改进置信度计算：更重视对齐精度
+  // 当IoU较高时，给予额外奖励，但提高奖励门槛
+  const iouBonus = iou > 0.7 ? Math.min(0.12, (iou - 0.7) * 0.4) : 0; // 更高IoU门槛才给奖励
   const confidence = Math.max(0, Math.min(1,
-    baseScore * 0.40 +          // 提高基础检测分数权重到40%
-    alignmentScore * 0.35 +     // 对齐分数35%
-    iou * 0.25 +               // IoU权重25%
+    baseScore * 0.35 +          // 降低基础检测分数权重
+    alignmentScore * 0.30 +     // 降低对齐分数权重
+    iou * 0.35 +               // 提高IoU权重，更重视真实贴合度
     iouBonus                   // 高IoU奖励
   ));
 

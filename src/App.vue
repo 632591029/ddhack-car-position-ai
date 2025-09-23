@@ -642,8 +642,8 @@ export default {
         return;
       }
 
-      // 如果正在拍照或已经拍照，跳过检测更新
-      if (this.isCapturing || this.capturedPhotos[this.currentStepIndex]) {
+      // 如果正在拍照，跳过检测更新（但不能跳过步骤切换检查）
+      if (this.isCapturing) {
         return;
       }
 
@@ -668,16 +668,15 @@ export default {
       this.logDetectionMetrics(result);
 
       // 自动拍照：matched 或（good 且 IoU、面积比充足）时均可触发
-      const autoThreshold = DEBUG_MODE ? 0.62 : 0.77; // 适中的自动拍照阈值
+      const autoThreshold = DEBUG_MODE ? 0.70 : 0.82; // 提高自动拍照阈值，更严格
       const metrics = result.metrics || {};
-      const goodEnoughOverlap = (metrics.iou || 0) >= 0.58 && (metrics.areaRatio || 0) >= 0.72; // 适中的重叠要求
+      const goodEnoughOverlap = (metrics.iou || 0) >= 0.68 && (metrics.areaRatio || 0) >= 0.75; // 提高重叠要求
       const canAuto = (
         (this.frameStatus === 'matched' && this.confidence >= autoThreshold) ||
         (this.frameStatus === 'good' && this.confidence >= (autoThreshold - 0.05) && goodEnoughOverlap)
       );
-      // 如果当前步骤已拍摄完成，立即进入下一步（只执行一次）
+      // 如果当前步骤已拍摄完成，立即进入下一步
       if (this.capturedPhotos[this.currentStepIndex] && !this.isCapturing) {
-        console.log('检测到步骤已完成，准备进入下一步');
         this.stopDetection(); // 停止检测
         this.nextStep(); // 直接进入下一步
         return;
@@ -686,7 +685,6 @@ export default {
       if (canAuto && !this.isCapturing) {
         const now = Date.now();
         if (!this.lastGoodDetectionTime || now - this.lastGoodDetectionTime > 3000) { // 增加到3秒防止重复
-          console.log('触发自动拍照，停止检测');
           this.stopDetection(); // 立即停止检测，防止重复触发
           this.playVoice('对准成功，正在拍照', true); // 强制播放成功语音
           this.lastGoodDetectionTime = now;
@@ -945,11 +943,9 @@ export default {
           [this.currentStepIndex]: imageDataUrl
         };
 
-        console.log('照片已保存到步骤:', this.currentStepIndex);
         this.playVoice('照片已保存');
 
-        // 立即进入下一步，不要等待
-        console.log('准备调用nextStep');
+        // 立即进入下一步
         this.nextStep();
       } catch (error) {
         console.error('拍照失败:', error);
@@ -962,8 +958,6 @@ export default {
 
 
     nextStep() {
-      console.log('nextStep被调用，当前步骤:', this.currentStepIndex);
-
       if (this.currentStepIndex < this.steps.length - 1) {
         // 立即停止当前检测和拍照
         this.stopDetection();
@@ -978,9 +972,6 @@ export default {
         this.statusText = '';
         this.consecutiveFailures = 0;
         this.lastErrorVoiceTime = null;
-        // 不重置lastGoodDetectionTime，防止新步骤立即拍照
-
-        console.log('步骤已更新到:', this.currentStepIndex, '步骤标题:', this.currentStep.title);
 
         // 强制触发UI更新
         this.$forceUpdate();
@@ -995,7 +986,6 @@ export default {
           }, 1000);
         }, 800);
       } else {
-        console.log('所有步骤完成，显示结果');
         this.showResults();
       }
     },
