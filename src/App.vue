@@ -5,6 +5,11 @@
       <div>正在初始化摄像头...</div>
     </div>
 
+    <!-- 本地开发模式指示器 -->
+    <div v-if="IS_LOCAL_DEV" class="dev-mode-indicator">
+      🚀 本地开发模式 - Mock数据已启用
+    </div>
+
     <div class="header-simple" v-show="!isLoading">
       <div class="progress-steps">
         <div
@@ -141,9 +146,11 @@ const { detectVehicleEdges } = require('./utils/detection');
 const CAR_API_KEY = "iq9EVHlacJwRarx9cmy7VzXl";
 const CAR_SECRET_KEY = "ZqTw4y1denK2RS3SsD9VACpvIDNua0OF";
 
-const USE_BAIDU_API = true; // 开启百度API检测
+// 本地开发模式：检测hostname自动启用mock模式
+const IS_LOCAL_DEV = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+const USE_BAIDU_API = !IS_LOCAL_DEV; // 本地开发时关闭百度API
 const BAIDU_MIN_CONFIDENCE = 0.6; // 百度API最低置信度阈值
-const DETECTION_INTERVAL_MS = 1200;
+const DETECTION_INTERVAL_MS = IS_LOCAL_DEV ? 800 : 1200; // 本地开发时更快检测
 const BAIDU_DETECTION_INTERVAL_MS = 2000; // 百度API检测间隔更长
 const DEBUG_MODE = true; // 调试模式，显示详细信息
 const DETECTION_CANVAS_MAX_WIDTH = 720;
@@ -159,6 +166,7 @@ export default {
   name: 'App',
   data() {
     return {
+      IS_LOCAL_DEV, // 暴露给模板使用
       isLoading: true,
       isUploading: false,
       isCapturing: false,
@@ -721,7 +729,30 @@ export default {
 
     useMockDetection() {
       const expected = this.currentExpectedRegion;
-      // 减少随机抖动，让mock数据更精确对齐
+
+      if (IS_LOCAL_DEV) {
+        // 本地开发模式：生成高质量的对齐数据，方便测试步骤切换
+        const perfectJitterX = (Math.random() - 0.5) * 0.008; // 很小的抖动
+        const perfectJitterY = (Math.random() - 0.5) * 0.008;
+        const perfectScale = 1 + (Math.random() - 0.5) * 0.02; // 很小的尺寸变化
+
+        const width = expected.width * perfectScale;
+        const height = expected.height * perfectScale;
+        const x = expected.x + perfectJitterX;
+        const y = expected.y + perfectJitterY;
+
+        const detection = {
+          hasVehicle: true,
+          bbox: { x, y, width, height },
+          score: 0.90 + Math.random() * 0.08 // 0.90-0.98的高分数
+        };
+
+        const analysis = analyzeAlignment(detection, this.currentExpectedRegion);
+        this.updateDetectionStatus(analysis);
+        return;
+      }
+
+      // 生产环境：保持原有的随机性
       const jitterX = (Math.random() - 0.5) * 0.02;
       const jitterY = (Math.random() - 0.5) * 0.02;
       const scale = 1 + (Math.random() - 0.5) * 0.05;
@@ -1265,6 +1296,21 @@ export default {
   padding: 0;
   box-sizing: border-box;
   -webkit-tap-highlight-color: transparent;
+}
+
+.dev-mode-indicator {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  background: linear-gradient(90deg, #ff6b35, #f7931e);
+  color: white;
+  text-align: center;
+  padding: 8px;
+  font-size: 14px;
+  font-weight: bold;
+  z-index: 1000;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
 }
 
 body {
