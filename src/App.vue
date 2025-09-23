@@ -156,7 +156,7 @@ const IS_LOCAL_DEV = window.location.hostname === 'localhost' || window.location
 const USE_BAIDU_API = !IS_LOCAL_DEV; // 本地开发时关闭百度API
 const BAIDU_MIN_CONFIDENCE = 0.6; // 百度API最低置信度阈值
 const DETECTION_INTERVAL_MS = IS_LOCAL_DEV ? 800 : 1200; // 本地开发时更快检测
-const BAIDU_DETECTION_INTERVAL_MS = 2000; // 百度API检测间隔更长
+const BAIDU_DETECTION_INTERVAL_MS = 1400; // 百度API检测间隔，平衡响应速度和API成本
 const DEBUG_MODE = true; // 调试模式，显示详细信息
 const DETECTION_CANVAS_MAX_WIDTH = 720;
 const USE_SAMPLE_IMAGE_DEBUG = false;
@@ -202,8 +202,6 @@ export default {
       detectionCanvas: null,
       detectionContext: null,
       lastDetectionMetrics: null,
-      stableDetectionCount: 0, // 连续稳定检测次数
-      lastStablePosition: null, // 上次稳定位置
       videoSize: {
         width: 0,
         height: 0
@@ -455,8 +453,6 @@ export default {
 
       // 开始新的检测前清理旧数据
       this.lastDetectionMetrics = null;
-      this.stableDetectionCount = 0; // 重置稳定检测计数
-      this.lastStablePosition = null; // 清理稳定位置记录
       this.isDetecting = true;
 
       const runDetection = async () => {
@@ -467,10 +463,12 @@ export default {
         await this.detectVehicleAlignment();
 
         if (this.isDetecting) {
-          // 动态调整检测间隔：失败次数越多，间隔越长
+          // 动态调整检测间隔：成功时快速响应，失败时减少API调用
           let interval = USE_BAIDU_API ? BAIDU_DETECTION_INTERVAL_MS : DETECTION_INTERVAL_MS;
-          if (this.consecutiveFailures > 3) {
-            interval = interval * 2; // 连续失败后降低频率
+          if (this.consecutiveFailures > 5) {
+            interval = interval * 1.5; // 多次失败后适度降低频率，节省API成本
+          } else if (this.frameStatus === 'good' || this.frameStatus === 'matched') {
+            interval = interval * 0.8; // 检测良好时稍微加快，提高响应性
           }
           this.detectionTimer = setTimeout(runDetection, interval);
         }
@@ -706,23 +704,16 @@ export default {
       }
 
       if (canAuto && !this.isCapturing) {
-        // 检查位置是否稳定，防止手机移动时误触发
-        const isStable = this.isPositionStable(result);
-
-        if (isStable) {
-          const now = Date.now();
-          const waitTime = IS_LOCAL_DEV ? 500 : 1500; // 缩短等待时间到1.5秒，减少不一致窗口
-          if (!this.lastGoodDetectionTime || now - this.lastGoodDetectionTime > waitTime) {
-            this.addDebugLog(`位置稳定(${this.stableDetectionCount}次)，满足拍照条件`);
-            this.stopDetection(); // 立即停止检测，防止重复触发
-            this.playVoice('对准成功，正在拍照', true); // 强制播放成功语音
-            this.lastGoodDetectionTime = now;
-            this.showSuccessEffect(); // 显示成功效果
-            // 立即拍照，不要延迟避免时机不一致
-            this.autoCapture();
-          }
-        } else {
-          this.addDebugLog(`检测良好但位置略有移动，等待稳定(置信度:${result.confidence?.toFixed(2)}, 面积比:${(metrics.areaRatio||0).toFixed(2)}, IoU:${(metrics.iou||0).toFixed(2)})`);
+        const now = Date.now();
+        const waitTime = IS_LOCAL_DEV ? 300 : 800; // 缩短等待时间，提高响应速度
+        if (!this.lastGoodDetectionTime || now - this.lastGoodDetectionTime > waitTime) {
+          this.addDebugLog(`满足拍照条件(置信度:${result.confidence?.toFixed(2)}, 面积比:${(metrics.areaRatio||0).toFixed(2)}, IoU:${(metrics.iou||0).toFixed(2)})`);
+          this.stopDetection(); // 立即停止检测，防止重复触发
+          this.playVoice('对准成功，正在拍照', true); // 强制播放成功语音
+          this.lastGoodDetectionTime = now;
+          this.showSuccessEffect(); // 显示成功效果
+          // 立即拍照，不要延迟避免时机不一致
+          this.autoCapture();
         }
       }
 
@@ -750,43 +741,6 @@ export default {
         areaRatio: format(metrics.areaRatio),
         iou: format(metrics.iou)
       });
-    },
-
-    // 检查位置是否稳定（防止手机移动时误触发）
-    isPositionStable(currentDetection) {
-      if (!currentDetection || !currentDetection.bbox) {
-        this.stableDetectionCount = 0;
-        this.lastStablePosition = null;
-        return false;
-      }
-
-      const currentPos = currentDetection.bbox;
-
-      // 如果是第一次检测或没有稳定位置记录
-      if (!this.lastStablePosition) {
-        this.lastStablePosition = { ...currentPos };
-        this.stableDetectionCount = 1;
-        return false;
-      }
-
-      // 计算位置偏移
-      const centerXDiff = Math.abs((currentPos.x + currentPos.width/2) - (this.lastStablePosition.x + this.lastStablePosition.width/2));
-      const centerYDiff = Math.abs((currentPos.y + currentPos.height/2) - (this.lastStablePosition.y + this.lastStablePosition.height/2));
-      const sizeDiff = Math.abs((currentPos.width * currentPos.height) - (this.lastStablePosition.width * this.lastStablePosition.height));
-
-      // 稳定性阈值：位置偏移小于2%，尺寸变化小于5%
-      const isStable = centerXDiff < 0.02 && centerYDiff < 0.02 && sizeDiff < 0.05;
-
-      if (isStable) {
-        this.stableDetectionCount++;
-        // 降低要求：连续2次稳定检测就可以拍照，提高响应速度
-        return this.stableDetectionCount >= 2;
-      } else {
-        // 位置不稳定，重置计数
-        this.stableDetectionCount = 1;
-        this.lastStablePosition = { ...currentPos };
-        return false;
-      }
     },
 
     useMockDetection() {
@@ -1029,8 +983,6 @@ export default {
         this.consecutiveFailures = 0;
         this.lastErrorVoiceTime = null;
         this.lastDetectionMetrics = null; // 清理旧的检测数据，防止使用过期数据
-        this.stableDetectionCount = 0; // 重置稳定检测计数
-        this.lastStablePosition = null; // 清理稳定位置记录
 
         // 强制触发UI更新
         this.$forceUpdate();
