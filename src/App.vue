@@ -463,13 +463,8 @@ export default {
         await this.detectVehicleAlignment();
 
         if (this.isDetecting) {
-          // 动态调整检测间隔：成功时快速响应，失败时减少API调用
-          let interval = USE_BAIDU_API ? BAIDU_DETECTION_INTERVAL_MS : DETECTION_INTERVAL_MS;
-          if (this.consecutiveFailures > 5) {
-            interval = interval * 1.5; // 多次失败后适度降低频率，节省API成本
-          } else if (this.frameStatus === 'good' || this.frameStatus === 'matched') {
-            interval = interval * 0.8; // 检测良好时稍微加快，提高响应性
-          }
+          // 简化间隔逻辑
+          const interval = USE_BAIDU_API ? BAIDU_DETECTION_INTERVAL_MS : DETECTION_INTERVAL_MS;
           this.detectionTimer = setTimeout(runDetection, interval);
         }
       };
@@ -695,49 +690,36 @@ export default {
 
       this.logDetectionMetrics(result);
 
-      // 简化自动拍照逻辑：重点是有完整车辆+基本对准
-      const autoThreshold = DEBUG_MODE ? 0.65 : 0.75; // 降低阈值，更容易触发
-      const metrics = result.metrics || {};
-
-      // 严格检查：必须真正检测到车辆
-      const hasVehicleDetected = result.hasVehicle === true; // 必须检测到车辆
-      const hasGoodConfidence = this.confidence >= autoThreshold; // 置信度够高
-      const hasCompleteVehicle = (metrics.areaRatio || 0) >= 0.75; // 提高面积要求，确保完整车辆
-      const roughlyAligned = (metrics.iou || 0) >= 0.50; // 稍微提高IoU要求
-
-      // 基础检测分数也要够高，防止误检
-      const hasGoodBaseScore = (metrics.baseScore || 0) >= 0.60;
-
-      const canAuto = hasVehicleDetected && hasGoodConfidence && hasCompleteVehicle && roughlyAligned && hasGoodBaseScore;
-      // 如果当前步骤已拍摄完成，立即进入下一步
-      if (this.capturedPhotos[this.currentStepIndex] && !this.isCapturing) {
-        this.stopDetection(); // 停止检测
-        this.nextStep(); // 直接进入下一步
+      // 🚨 核心逻辑：如果当前步骤已完成，立即停止检测，避免误拍
+      if (this.capturedPhotos[this.currentStepIndex]) {
+        if (this.isDetecting) {
+          this.addDebugLog('当前步骤已完成，停止检测');
+          this.stopDetection();
+        }
         return;
       }
 
-      if (canAuto && !this.isCapturing) {
-        const now = Date.now();
-        const waitTime = IS_LOCAL_DEV ? 300 : 800; // 缩短等待时间，提高响应速度
-        if (!this.lastGoodDetectionTime || now - this.lastGoodDetectionTime > waitTime) {
-          this.addDebugLog(`✅拍照条件全部满足 - 置信度:${result.confidence?.toFixed(2)}, 面积比:${(metrics.areaRatio||0).toFixed(2)}, IoU:${(metrics.iou||0).toFixed(2)}, 基础分:${(metrics.baseScore||0).toFixed(2)}`);
-          this.stopDetection(); // 立即停止检测，防止重复触发
-          this.playVoice('对准成功，正在拍照', true); // 强制播放成功语音
-          this.lastGoodDetectionTime = now;
-          this.showSuccessEffect(); // 显示成功效果
-          // 立即拍照，不要延迟避免时机不一致
-          this.autoCapture();
-        }
-      } else if (result.hasVehicle) {
-        // 检测到车辆但条件不满足时的详细信息
-        const issues = [];
-        if (!hasVehicleDetected) issues.push('未检测到车辆');
-        if (!hasGoodConfidence) issues.push(`置信度不足(${result.confidence?.toFixed(2)}<${autoThreshold})`);
-        if (!hasCompleteVehicle) issues.push(`车辆不完整(面积${(metrics.areaRatio||0).toFixed(2)}<0.75)`);
-        if (!roughlyAligned) issues.push(`对准不够(IoU${(metrics.iou||0).toFixed(2)}<0.50)`);
-        if (!hasGoodBaseScore) issues.push(`基础分不足(${(metrics.baseScore||0).toFixed(2)}<0.60)`);
+      // 🚨 核心逻辑：如果正在拍摄中，不要重复触发
+      if (this.isCapturing) {
+        return;
+      }
 
-        this.addDebugLog(`❌拍照条件未满足: ${issues.join(', ')}`);
+      // 简化拍照条件：重点是有车辆 + 基本质量要求
+      const autoThreshold = DEBUG_MODE ? 0.65 : 0.75;
+      const metrics = result.metrics || {};
+
+      const canAuto = result.hasVehicle &&
+                     this.confidence >= autoThreshold &&
+                     (metrics.areaRatio || 0) >= 0.70 &&
+                     (metrics.iou || 0) >= 0.45;
+
+      if (canAuto) {
+        this.addDebugLog(`✅满足拍照条件 - 置信度:${this.confidence?.toFixed(2)}, 面积比:${(metrics.areaRatio||0).toFixed(2)}, IoU:${(metrics.iou||0).toFixed(2)}`);
+        this.stopDetection(); // 停止检测，防止重复
+        this.isCapturing = true; // 标记拍摄状态
+        this.playVoice('拍照中', true);
+        this.showSuccessEffect();
+        this.autoCapture();
       }
 
     },
@@ -967,16 +949,20 @@ export default {
           [this.currentStepIndex]: imageDataUrl
         };
 
-        this.addDebugLog(`照片已保存到步骤${this.currentStepIndex}`);
-        this.playVoice('照片已保存');
+        this.addDebugLog(`✅步骤${this.currentStepIndex}照片保存成功`);
 
-        // 重置状态后再进入下一步
+        // 重置状态
         this.isCapturing = false;
-        this.lastDetectionMetrics = null; // 清理当前检测数据，防止下个步骤误用
+        this.lastDetectionMetrics = null;
 
-        // 立即进入下一步
-        this.addDebugLog('调用nextStep');
-        this.nextStep();
+        // 立即进入下一步（如果还有步骤）
+        if (this.currentStepIndex < this.steps.length - 1) {
+          this.addDebugLog('进入下一步骤');
+          this.nextStep();
+        } else {
+          this.addDebugLog('所有步骤完成');
+          this.showResults();
+        }
       } catch (error) {
         console.error('拍照失败:', error);
         this.playVoice('拍照失败，请重试');
@@ -987,43 +973,27 @@ export default {
 
 
     nextStep() {
-      this.addDebugLog(`nextStep调用-当前:${this.currentStepIndex}`);
+      // 🚨 确保彻底停止当前检测
+      this.stopDetection();
+      this.isCapturing = false;
 
-      if (this.currentStepIndex < this.steps.length - 1) {
-        // 立即停止当前检测和拍照
-        this.stopDetection();
-        this.isCapturing = false;
+      // 更新步骤
+      const oldStep = this.currentStepIndex;
+      this.currentStepIndex++;
+      this.addDebugLog(`步骤切换: ${oldStep} -> ${this.currentStepIndex}`);
 
-        // 立即更新步骤索引
-        const oldStep = this.currentStepIndex;
-        this.currentStepIndex = this.currentStepIndex + 1;
-        this.addDebugLog(`步骤${oldStep}->${this.currentStepIndex}:${this.steps[this.currentStepIndex].title}`);
+      // 重置状态
+      this.frameStatus = 'detecting';
+      this.confidence = 0;
+      this.consecutiveFailures = 0;
+      this.lastDetectionMetrics = null;
+      this.lastGoodDetectionTime = null;
 
-        // 重置所有状态
-        this.frameStatus = 'detecting';
-        this.confidence = 0;
-        this.statusText = '';
-        this.consecutiveFailures = 0;
-        this.lastErrorVoiceTime = null;
-        this.lastDetectionMetrics = null; // 清理旧的检测数据，防止使用过期数据
-
-        // 强制触发UI更新
-        this.$forceUpdate();
-
-        // 短暂延迟后播放语音并开始检测
-        setTimeout(() => {
-          this.addDebugLog('播放语音+重启检测');
-          this.playVoice(this.currentStep.voice, true);
-          setTimeout(() => {
-            // 重置拍照时间戳，允许新步骤拍照
-            this.lastGoodDetectionTime = null;
-            this.startDetection();
-          }, 1000);
-        }, 800);
-      } else {
-        this.addDebugLog('所有步骤完成');
-        this.showResults();
-      }
+      // 播放语音并开始新检测
+      this.playVoice(this.currentStep.voice, true);
+      setTimeout(() => {
+        this.startDetection();
+      }, 800);
     },
 
     addUserInteractionListeners() {
