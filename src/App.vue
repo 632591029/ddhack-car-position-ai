@@ -99,6 +99,11 @@
           <h4>建议</h4>
           <div>{{ debugInfo.message }}</div>
         </div>
+
+        <div class="debug-section">
+          <h4>实时日志</h4>
+          <div v-for="log in debugLog" :key="log" class="debug-log-item">{{ log }}</div>
+        </div>
       </div>
     </div>
 
@@ -184,6 +189,7 @@ export default {
       speechReady: false, // 语音是否已就绪
       userInteracted: false, // 用户是否已交互
       debugInfo: null, // 调试信息
+      debugLog: [], // 调试日志
       showDebugPanel: true, // 是否显示调试面板内容
       DEBUG_MODE, // 调试模式常量
       accessToken: null,
@@ -950,7 +956,7 @@ export default {
         return;
       }
 
-      console.log('开始自动拍照流程');
+      this.addDebugLog('开始自动拍照流程');
       this.isCapturing = true;
       this.stopDetection();
 
@@ -961,10 +967,10 @@ export default {
         }
 
         const qualityResult = this.checkPhotoQuality();
-        console.log('质量检查结果:', qualityResult);
+        this.addDebugLog(`质量检查: ${qualityResult.passed ? '通过' : '失败'}`);
 
         if (!qualityResult.passed) {
-          console.log('质量检查失败，重新开始检测');
+          this.addDebugLog('质量不佳，重新检测');
           this.playVoice(qualityResult.reason || '照片质量不佳，请重新拍摄');
           this.isCapturing = false; // 重置状态
           await this.delay(1200);
@@ -978,14 +984,14 @@ export default {
           [this.currentStepIndex]: imageDataUrl
         };
 
-        console.log('照片已保存，当前步骤:', this.currentStepIndex);
+        this.addDebugLog(`照片已保存到步骤${this.currentStepIndex}`);
         this.playVoice('照片已保存');
 
         // 重置状态后再进入下一步
         this.isCapturing = false;
 
         // 立即进入下一步
-        console.log('准备进入下一步');
+        this.addDebugLog('调用nextStep');
         this.nextStep();
       } catch (error) {
         console.error('拍照失败:', error);
@@ -997,7 +1003,7 @@ export default {
 
 
     nextStep() {
-      console.log('nextStep被调用，当前步骤:', this.currentStepIndex, '总步骤:', this.steps.length);
+      this.addDebugLog(`nextStep调用-当前:${this.currentStepIndex}`);
 
       if (this.currentStepIndex < this.steps.length - 1) {
         // 立即停止当前检测和拍照
@@ -1007,7 +1013,7 @@ export default {
         // 立即更新步骤索引
         const oldStep = this.currentStepIndex;
         this.currentStepIndex = this.currentStepIndex + 1;
-        console.log('步骤更新:', oldStep, '->', this.currentStepIndex, '新步骤标题:', this.steps[this.currentStepIndex].title);
+        this.addDebugLog(`步骤${oldStep}->${this.currentStepIndex}:${this.steps[this.currentStepIndex].title}`);
 
         // 重置所有状态
         this.frameStatus = 'detecting';
@@ -1021,17 +1027,16 @@ export default {
 
         // 短暂延迟后播放语音并开始检测
         setTimeout(() => {
-          console.log('播放下一步语音:', this.currentStep.voice);
+          this.addDebugLog('播放语音+重启检测');
           this.playVoice(this.currentStep.voice, true);
           setTimeout(() => {
             // 重置拍照时间戳，允许新步骤拍照
             this.lastGoodDetectionTime = null;
-            console.log('重新开始检测');
             this.startDetection();
           }, 1000);
         }, 800);
       } else {
-        console.log('所有步骤完成，显示结果');
+        this.addDebugLog('所有步骤完成');
         this.showResults();
       }
     },
@@ -1098,6 +1103,15 @@ export default {
 
     toggleDebugPanel() {
       this.showDebugPanel = !this.showDebugPanel;
+    },
+
+    addDebugLog(message) {
+      const time = new Date().toLocaleTimeString();
+      this.debugLog.unshift(`${time}: ${message}`);
+      // 只保留最近10条日志
+      if (this.debugLog.length > 10) {
+        this.debugLog = this.debugLog.slice(0, 10);
+      }
     },
 
 
@@ -1672,6 +1686,13 @@ body {
 .debug-section div {
   margin: 2px 0;
   font-family: monospace;
+}
+
+.debug-log-item {
+  font-size: 10px;
+  color: #00ff00;
+  border-bottom: 1px solid rgba(255,255,255,0.1);
+  padding: 2px 0;
 }
 
 @media (max-width: 640px) {
