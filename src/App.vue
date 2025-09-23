@@ -685,7 +685,7 @@ export default {
       const autoThreshold = DEBUG_MODE ? 0.70 : 0.82; // 提高自动拍照阈值，更严格
       const metrics = result.metrics || {};
       const goodEnoughOverlap = (metrics.iou || 0) >= 0.68 && (metrics.areaRatio || 0) >= 0.75; // 提高重叠要求
-      const canAuto = (
+      const canAuto = IS_LOCAL_DEV || (  // 本地开发时强制通过
         (this.frameStatus === 'matched' && this.confidence >= autoThreshold) ||
         (this.frameStatus === 'good' && this.confidence >= (autoThreshold - 0.05) && goodEnoughOverlap)
       );
@@ -698,7 +698,8 @@ export default {
 
       if (canAuto && !this.isCapturing) {
         const now = Date.now();
-        if (!this.lastGoodDetectionTime || now - this.lastGoodDetectionTime > 3000) { // 增加到3秒防止重复
+        const waitTime = IS_LOCAL_DEV ? 500 : 3000; // 本地开发只等0.5秒，生产环境3秒
+        if (!this.lastGoodDetectionTime || now - this.lastGoodDetectionTime > waitTime) {
           this.stopDetection(); // 立即停止检测，防止重复触发
           this.playVoice('对准成功，正在拍照', true); // 强制播放成功语音
           this.lastGoodDetectionTime = now;
@@ -735,30 +736,7 @@ export default {
 
     useMockDetection() {
       const expected = this.currentExpectedRegion;
-
-      if (IS_LOCAL_DEV) {
-        // 本地开发模式：生成高质量的对齐数据，方便测试步骤切换
-        const perfectJitterX = (Math.random() - 0.5) * 0.008; // 很小的抖动
-        const perfectJitterY = (Math.random() - 0.5) * 0.008;
-        const perfectScale = 1 + (Math.random() - 0.5) * 0.02; // 很小的尺寸变化
-
-        const width = expected.width * perfectScale;
-        const height = expected.height * perfectScale;
-        const x = expected.x + perfectJitterX;
-        const y = expected.y + perfectJitterY;
-
-        const detection = {
-          hasVehicle: true,
-          bbox: { x, y, width, height },
-          score: 0.90 + Math.random() * 0.08 // 0.90-0.98的高分数
-        };
-
-        const analysis = analyzeAlignment(detection, this.currentExpectedRegion);
-        this.updateDetectionStatus(analysis);
-        return;
-      }
-
-      // 生产环境：保持原有的随机性
+      // 保持原有的简单随机性
       const jitterX = (Math.random() - 0.5) * 0.02;
       const jitterY = (Math.random() - 0.5) * 0.02;
       const scale = 1 + (Math.random() - 0.5) * 0.05;
@@ -842,8 +820,8 @@ export default {
     },
 
     checkPhotoQuality() {
-      // Mock模式直接通过质量检查
-      if (!USE_BAIDU_API) {
+      // Mock模式或本地开发模式直接通过质量检查
+      if (!USE_BAIDU_API || IS_LOCAL_DEV) {
         return { passed: true, score: 0.9 };
       }
 
