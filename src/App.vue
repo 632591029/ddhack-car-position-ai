@@ -451,6 +451,8 @@ export default {
         return;
       }
 
+      // 开始新的检测前清理旧数据
+      this.lastDetectionMetrics = null;
       this.isDetecting = true;
 
       const runDetection = async () => {
@@ -942,6 +944,7 @@ export default {
 
         // 重置状态后再进入下一步
         this.isCapturing = false;
+        this.lastDetectionMetrics = null; // 清理当前检测数据，防止下个步骤误用
 
         // 立即进入下一步
         this.addDebugLog('调用nextStep');
@@ -974,6 +977,7 @@ export default {
         this.statusText = '';
         this.consecutiveFailures = 0;
         this.lastErrorVoiceTime = null;
+        this.lastDetectionMetrics = null; // 清理旧的检测数据，防止使用过期数据
 
         // 强制触发UI更新
         this.$forceUpdate();
