@@ -1,8 +1,8 @@
 const DEFAULT_THRESHOLDS = {
-  matchedConfidence: 0.78, // 提高阈值，更严格
-  goodConfidence: 0.68,
-  adjustConfidence: 0.50,
-  matchedIoU: 0.65  // 提高IoU要求，确保真的贴合
+  matchedConfidence: 0.70, // 降低阈值，以完整车辆为主
+  goodConfidence: 0.60,
+  adjustConfidence: 0.45,
+  matchedIoU: 0.50  // 降低IoU要求，注重车辆完整性而非精确对准
 };
 
 function clamp(value, min, max) {
@@ -119,14 +119,15 @@ function analyzeAlignment(detection, expectedRegion, options = {}) {
 
   const alignmentScore = Math.max(0, 1 - centerPenalty * 2.8 - sizePenalty * 0.8); // 提高惩罚强度，更严格
 
-  // 改进置信度计算：更重视对齐精度
-  // 当IoU较高时，给予额外奖励，但提高奖励门槛
-  const iouBonus = iou > 0.7 ? Math.min(0.12, (iou - 0.7) * 0.4) : 0; // 更高IoU门槛才给奖励
+  // 改进置信度计算：更重视车辆完整性，适当放松对齐要求
+  const areaBonus = areaRatio >= 0.8 && areaRatio <= 1.3 ? 0.15 : 0; // 完整车辆奖励
+  const iouBonus = iou > 0.5 ? Math.min(0.10, (iou - 0.5) * 0.3) : 0; // 降低IoU奖励门槛
   const confidence = Math.max(0, Math.min(1,
-    baseScore * 0.35 +          // 降低基础检测分数权重
-    alignmentScore * 0.30 +     // 降低对齐分数权重
-    iou * 0.35 +               // 提高IoU权重，更重视真实贴合度
-    iouBonus                   // 高IoU奖励
+    baseScore * 0.40 +          // 提高基础检测分数权重
+    alignmentScore * 0.25 +     // 降低对齐分数权重，不要太严格
+    iou * 0.25 +               // 降低IoU权重
+    areaBonus +                // 完整车辆奖励
+    iouBonus                   // IoU奖励
   ));
 
   let frameStatus = 'detecting';
