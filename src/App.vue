@@ -950,6 +950,7 @@ export default {
         return;
       }
 
+      console.log('开始自动拍照流程');
       this.isCapturing = true;
       this.stopDetection();
 
@@ -960,9 +961,12 @@ export default {
         }
 
         const qualityResult = this.checkPhotoQuality();
+        console.log('质量检查结果:', qualityResult);
 
         if (!qualityResult.passed) {
+          console.log('质量检查失败，重新开始检测');
           this.playVoice(qualityResult.reason || '照片质量不佳，请重新拍摄');
+          this.isCapturing = false; // 重置状态
           await this.delay(1200);
           this.startDetection();
           return;
@@ -974,28 +978,36 @@ export default {
           [this.currentStepIndex]: imageDataUrl
         };
 
+        console.log('照片已保存，当前步骤:', this.currentStepIndex);
         this.playVoice('照片已保存');
 
+        // 重置状态后再进入下一步
+        this.isCapturing = false;
+
         // 立即进入下一步
+        console.log('准备进入下一步');
         this.nextStep();
       } catch (error) {
         console.error('拍照失败:', error);
         this.playVoice('拍照失败，请重试');
-        this.startDetection();
-      } finally {
         this.isCapturing = false;
+        this.startDetection();
       }
     },
 
 
     nextStep() {
+      console.log('nextStep被调用，当前步骤:', this.currentStepIndex, '总步骤:', this.steps.length);
+
       if (this.currentStepIndex < this.steps.length - 1) {
         // 立即停止当前检测和拍照
         this.stopDetection();
         this.isCapturing = false;
 
         // 立即更新步骤索引
+        const oldStep = this.currentStepIndex;
         this.currentStepIndex = this.currentStepIndex + 1;
+        console.log('步骤更新:', oldStep, '->', this.currentStepIndex, '新步骤标题:', this.steps[this.currentStepIndex].title);
 
         // 重置所有状态
         this.frameStatus = 'detecting';
@@ -1009,14 +1021,17 @@ export default {
 
         // 短暂延迟后播放语音并开始检测
         setTimeout(() => {
+          console.log('播放下一步语音:', this.currentStep.voice);
           this.playVoice(this.currentStep.voice, true);
           setTimeout(() => {
             // 重置拍照时间戳，允许新步骤拍照
             this.lastGoodDetectionTime = null;
+            console.log('重新开始检测');
             this.startDetection();
           }, 1000);
         }, 800);
       } else {
+        console.log('所有步骤完成，显示结果');
         this.showResults();
       }
     },
