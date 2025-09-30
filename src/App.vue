@@ -39,9 +39,9 @@
         <div class="car-frame-large" :class="{ rear: isRearAngle }" :style="carFrameStyle"></div>
         <!-- <div class="expected-box" :style="expectedRegionStyle"></div> -->
         </div>
-      <div class="status-toast" :class="frameStatus">
+      <!-- <div class="status-toast" :class="frameStatus">
         {{ statusText || '正在检测车辆轮廓' }}
-      </div>
+      </div> -->
     </div>
 
 
@@ -198,7 +198,7 @@ export default {
       userInteracted: false, // 用户是否已交互
       debugInfo: null, // 调试信息
       debugLog: [], // 调试日志
-      showDebugPanel: true, // 是否显示调试面板内容
+      showDebugPanel: false, // 是否显示调试面板内容
       DEBUG_MODE, // 调试模式常量
       showSolidOverlay: false, // 是否显示实心图片
       accessToken: null,
@@ -1665,15 +1665,16 @@ body {
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  background: rgba(0, 0, 0, 0.88);
+  background: rgba(0, 0, 0, 0.68);
   color: white;
-  padding: 24px 32px;
+  padding: 6px 12px;
   border-radius: 16px;
   text-align: center;
   z-index: 60;
   max-width: 80vw;
   opacity: 0;
   transition: opacity 0.3s ease;
+  font-size: 13px;
 }
 
 .voice-hint.show {
