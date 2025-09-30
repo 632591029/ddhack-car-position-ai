@@ -2,7 +2,7 @@
   <div class="app-container">
     <div v-if="isLoading" class="loading-overlay">
       <div class="spinner"></div>
-      <div>正在初始化摄像头...</div>
+      <div>{{ loadingText }}</div>
     </div>
 
     <!-- 本地开发模式指示器 -->
@@ -179,10 +179,12 @@ export default {
     return {
       IS_LOCAL_DEV, // 暴露给模板使用
       isLoading: true,
+      loadingText: '正在初始化...',
       isUploading: false,
       isCapturing: false,
       useSampleDebug: USE_SAMPLE_IMAGE_DEBUG,
       sampleImage: null,
+      preloadedImages: {}, // 预加载的图片缓存
       currentStepIndex: 0,
       capturedPhotos: {},
       frameStatus: 'detecting',
@@ -318,6 +320,9 @@ export default {
     // 初始化语音合成器
     this.initSpeechSynthesis();
 
+    // 预加载图片
+    await this.preloadImages();
+
     await this.initApp();
   },
 
@@ -327,15 +332,47 @@ export default {
   },
 
   methods: {
+    async preloadImages() {
+      const imageUrls = [];
+
+      // 收集所有需要预加载的图片URL
+      this.steps.forEach(step => {
+        imageUrls.push(step.overlayImage);
+        imageUrls.push(step.solidImage);
+      });
+
+      // 如果使用样例图片，也加入预加载
+      if (this.useSampleDebug) {
+        imageUrls.push(SAMPLE_IMAGE_URL);
+      }
+
+      // 去重
+      const uniqueUrls = [...new Set(imageUrls)];
+
+      const preloadPromises = uniqueUrls.map(url => {
+        return new Promise((resolve) => {
+          const img = new Image();
+          img.onload = () => {
+            this.preloadedImages[url] = img;
+            resolve(img);
+          };
+          img.onerror = () => resolve(null);
+          img.src = url;
+        });
+      });
+
+      await Promise.all(preloadPromises);
+    },
+
     async initApp() {
       try {
         if (this.useSampleDebug) {
           await this.loadSampleImage();
         } else {
           if (USE_BAIDU_API) {
-        await this.getBaiduAccessToken();
+            await this.getBaiduAccessToken();
           }
-        await this.initCamera();
+          await this.initCamera();
         }
         this.isLoading = false;
         this.playVoice(this.currentStep.voice, true); // 强制播放初始步骤语音
@@ -1556,30 +1593,32 @@ body {
 
 .status-toast {
   position: absolute;
-  bottom: 140px;
+  bottom: 120px;
   left: 50%;
   transform: translateX(-50%);
-  padding: 12px 24px;
-  border-radius: 999px;
-  background: rgba(0,0,0,0.65);
-  border: 1px solid rgba(255,255,255,0.2);
+  padding: 8px 16px;
+  border-radius: 20px;
+  background: rgba(0,0,0,0.75);
+  border: 1px solid rgba(255,255,255,0.15);
   color: white;
-  font-size: 15px;
-  letter-spacing: 0.6px;
-  backdrop-filter: blur(6px);
+  font-size: 13px;
+  letter-spacing: 0.3px;
+  backdrop-filter: blur(8px);
   transition: all 0.3s ease;
+  max-width: 280px;
+  text-align: center;
 }
 
 .status-toast.matched {
-  background: rgba(0, 255, 106, 0.12);
-  border-color: rgba(0, 255, 106, 0.55);
-  color: #0cff7a;
+  background: rgba(0, 255, 106, 0.15);
+  border-color: rgba(0, 255, 106, 0.4);
+  color: #00ff6a;
 }
 
 .status-toast.good {
-  background: rgba(0, 196, 255, 0.12);
-  border-color: rgba(0, 196, 255, 0.55);
-  color: #67e1ff;
+  background: rgba(0, 196, 255, 0.15);
+  border-color: rgba(0, 196, 255, 0.4);
+  color: #50d8ff;
 }
 
 
@@ -1861,8 +1900,10 @@ body {
 
 
   .status-toast {
-    bottom: 130px;
-    font-size: 13px;
+    bottom: 110px;
+    font-size: 12px;
+    padding: 6px 14px;
+    max-width: 240px;
   }
 }
 </style>
