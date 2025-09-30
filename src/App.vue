@@ -162,10 +162,16 @@ const DETECTION_CANVAS_MAX_WIDTH = 720;
 const USE_SAMPLE_IMAGE_DEBUG = false;
 const SAMPLE_IMAGE_URL = 'https://s3-gz01.didistatic.com/packages-mait/img/w0VyxKMAgG1758512666365.png';
 
-const OVERLAY_LEFT_FRONT = 'https://s3-gz01.didistatic.com/packages-mait/img/RC5OtnR65N1758512045195.png';
-const OVERLAY_RIGHT_FRONT = 'https://s3-gz01.didistatic.com/packages-mait/img/vPFvw45BoX1758512045345.png';
-const OVERLAY_RIGHT_REAR = 'https://s3-gz01.didistatic.com/packages-mait/img/2OquYrEZxI1758512044128.png';
-const OVERLAY_LEFT_REAR = 'https://s3-gz01.didistatic.com/packages-mait/img/Kd0C5rriZv1758512044096.png';
+const OVERLAY_LEFT_FRONT = 'https://s3-gz01.didistatic.com/packages-mait/img/t2JuuMYg411759216061942.png';
+const OVERLAY_RIGHT_FRONT = 'https://s3-gz01.didistatic.com/packages-mait/img/bF5pKiZOZ91759216062459.png';
+const OVERLAY_RIGHT_REAR = 'https://s3-gz01.didistatic.com/packages-mait/img/a2kiXwxiVX1759216061042.png';
+const OVERLAY_LEFT_REAR = 'https://s3-gz01.didistatic.com/packages-mait/img/4zj7gkcftY1759216061287.png';
+
+// 实心图片URL
+const SOLID_LEFT_FRONT = 'https://s3-gz01.didistatic.com/packages-mait/img/cI6Dt6hDh41759216060082.png';
+const SOLID_RIGHT_FRONT = 'https://s3-gz01.didistatic.com/packages-mait/img/r3AMQsZrRS1759216060170.png';
+const SOLID_RIGHT_REAR = 'https://s3-gz01.didistatic.com/packages-mait/img/d0vsut19Gb1759216059118.png';
+const SOLID_LEFT_REAR = 'https://s3-gz01.didistatic.com/packages-mait/img/tEpYMd0lH41759216059126.png';
 
 export default {
   name: 'App',
@@ -192,6 +198,7 @@ export default {
       debugLog: [], // 调试日志
       showDebugPanel: true, // 是否显示调试面板内容
       DEBUG_MODE, // 调试模式常量
+      showSolidOverlay: false, // 是否显示实心图片
       accessToken: null,
       detectionTimer: null,
       stream: null,
@@ -211,6 +218,7 @@ export default {
           title: '左前侧',
           desc: '请将车辆左前侧对齐虚线轮廓，让车头露出完整',
           overlayImage: OVERLAY_LEFT_FRONT,
+          solidImage: SOLID_LEFT_FRONT,
           expectedRegion: { x: 0.075, y: 0.22, width: 0.85, height: 0.56 },
           voice: '请对准车辆左前侧'
         },
@@ -218,6 +226,7 @@ export default {
           title: '右前侧',
           desc: '请转到车辆右前侧，让车头贴合虚线轮廓',
           overlayImage: OVERLAY_RIGHT_FRONT,
+          solidImage: SOLID_RIGHT_FRONT,
           expectedRegion: { x: 0.075, y: 0.22, width: 0.85, height: 0.56 },
           voice: '请对准车辆右前侧'
         },
@@ -225,6 +234,7 @@ export default {
           title: '右后侧',
           desc: '请移动到车辆右后侧，对齐虚线框位置',
           overlayImage: OVERLAY_RIGHT_REAR,
+          solidImage: SOLID_RIGHT_REAR,
           expectedRegion: { x: 0.075, y: 0.27, width: 0.85, height: 0.46 },
           voice: '请对准车辆右后侧'
         },
@@ -232,6 +242,7 @@ export default {
           title: '左后侧',
           desc: '请移动到车辆左后侧，保持车辆充满虚线轮廓',
           overlayImage: OVERLAY_LEFT_REAR,
+          solidImage: SOLID_LEFT_REAR,
           expectedRegion: { x: 0.075, y: 0.27, width: 0.85, height: 0.46 },
           voice: '请对准车辆左后侧'
         }
@@ -282,8 +293,9 @@ export default {
     },
 
     carFrameStyle() {
+      const imageUrl = this.showSolidOverlay ? this.currentStep.solidImage : this.currentStep.overlayImage;
       const style = {
-        backgroundImage: `url(${this.currentStep.overlayImage})`
+        backgroundImage: `url(${imageUrl})`
       };
 
       return style;
@@ -719,7 +731,10 @@ export default {
         this.isCapturing = true; // 标记拍摄状态
         this.playVoice('拍照中', true);
         this.showSuccessEffect();
-        this.autoCapture();
+        // 使用 setTimeout 异步调用，避免状态冲突
+        setTimeout(() => {
+          this.autoCapture();
+        }, 100);
       }
 
     },
@@ -750,10 +765,34 @@ export default {
 
     useMockDetection() {
       const expected = this.currentExpectedRegion;
-      // 保持原有的简单随机性
-      const jitterX = (Math.random() - 0.5) * 0.02;
-      const jitterY = (Math.random() - 0.5) * 0.02;
-      const scale = 1 + (Math.random() - 0.5) * 0.05;
+
+      // 如果当前步骤已拍摄，不再生成成功的检测结果
+      if (this.capturedPhotos[this.currentStepIndex]) {
+        const analysis = {
+          hasVehicle: false,
+          confidence: 0,
+          frameStatus: 'detecting',
+          message: '当前步骤已完成，请移动到下一角度'
+        };
+        this.updateDetectionStatus(analysis);
+        return;
+      }
+
+      // 本地开发模式：提高自动拍照成功率至95%
+      const shouldAutoCapture = Math.random() < 0.95;
+
+      let jitterX, jitterY, scale;
+      if (shouldAutoCapture) {
+        // 生成高质量对齐数据，确保满足自动拍照条件
+        jitterX = (Math.random() - 0.5) * 0.005; // 极小位置偏移
+        jitterY = (Math.random() - 0.5) * 0.005;
+        scale = 0.98 + Math.random() * 0.04; // 面积比0.98-1.02，高于0.70要求
+      } else {
+        // 生成需要调整的数据
+        jitterX = (Math.random() - 0.5) * 0.06;
+        jitterY = (Math.random() - 0.5) * 0.06;
+        scale = 0.75 + Math.random() * 0.5; // 面积比变化较大
+      }
 
       const width = Math.min(0.9, Math.max(0.3, expected.width * scale));
       const height = Math.min(0.9, Math.max(0.3, expected.height * scale));
@@ -763,11 +802,16 @@ export default {
       const detection = {
         hasVehicle: true,
         bbox: { x, y, width, height },
-        score: 0.85 + Math.random() * 0.1 // 提高基础分数到0.85-0.95
+        score: shouldAutoCapture ? 0.92 + Math.random() * 0.05 : 0.70 + Math.random() * 0.15
       };
 
       const analysis = analyzeAlignment(detection, this.currentExpectedRegion);
       this.updateDetectionStatus(analysis);
+
+      // 调试：输出当前检测结果
+      if (DEBUG_MODE && analysis.metrics) {
+        console.log(`[Mock检测] 置信度:${analysis.confidence?.toFixed(3)}, 面积比:${analysis.metrics.areaRatio?.toFixed(3)}, IoU:${analysis.metrics.iou?.toFixed(3)}`);
+      }
     },
 
     captureFrame(options = {}) {
@@ -893,49 +937,73 @@ export default {
     },
 
     async autoCapture() {
-      if (this.isCapturing) {
-        return; // 如果正在拍照，直接返回
-      }
+      console.log('🔥 autoCapture 被调用');
+      this.addDebugLog('🔥 autoCapture 被调用');
 
       // 如果当前步骤已拍摄，直接进入下一步
       if (this.capturedPhotos[this.currentStepIndex]) {
-        this.nextStep();
+        console.log('✅ 当前步骤已拍摄，进入下一步');
+        this.addDebugLog('✅ 当前步骤已拍摄，进入下一步');
+
+        // 重置状态并进入下一步
+        this.isCapturing = false;
+        if (this.currentStepIndex < this.steps.length - 1) {
+          setTimeout(() => {
+            this.nextStep();
+          }, 300);
+        } else {
+          this.showResults();
+        }
         return;
       }
 
-      this.addDebugLog('开始自动拍照流程');
-      this.isCapturing = true;
+      console.log('📸 开始自动拍照流程');
+      this.addDebugLog('📸 开始自动拍照流程');
       this.stopDetection();
 
       // 在拍照前再次检查当前检测状态，避免拍到地面等无效画面
       if (!IS_LOCAL_DEV) {
+        console.log('🔍 非本地开发模式，进行拍照前检查');
         const metrics = this.lastDetectionMetrics || {};
         const iouOK = (metrics.iou || 0) >= 0.60; // 要求较高的IoU
         const areaOK = (metrics.areaRatio || 0) >= 0.70; // 要求合理的面积比
 
         if (!iouOK || !areaOK) {
-          this.addDebugLog(`拍照前检查失败: IoU=${(metrics.iou || 0).toFixed(3)} 面积=${(metrics.areaRatio || 0).toFixed(3)}`);
+          console.log('❌ 拍照前检查失败');
+          this.addDebugLog(`❌ 拍照前检查失败: IoU=${(metrics.iou || 0).toFixed(3)} 面积=${(metrics.areaRatio || 0).toFixed(3)}`);
           this.isCapturing = false;
           this.startDetection();
           return;
         }
-        this.addDebugLog('拍照前检查通过');
+        console.log('✅ 拍照前检查通过');
+        this.addDebugLog('✅ 拍照前检查通过');
+      } else {
+        console.log('🏠 本地开发模式，跳过拍照前检查');
+        this.addDebugLog('🏠 本地开发模式，跳过拍照前检查');
       }
 
       try {
+        console.log('📷 开始捕获画面');
+        this.addDebugLog('📷 开始捕获画面');
         const imageDataUrl = this.captureFrame({ fullResolution: true });
+        console.log('🖼️ 画面捕获结果:', imageDataUrl ? '成功' : '失败');
+        this.addDebugLog(`🖼️ 画面捕获结果: ${imageDataUrl ? '成功' : '失败'}`);
+
         if (!imageDataUrl) {
           throw new Error('无法捕获画面');
         }
 
+        console.log('🔍 开始质量检查');
         const qualityResult = this.checkPhotoQuality();
-        this.addDebugLog(`质量检查: ${qualityResult.passed ? '通过' : '失败'}`);
+        console.log('📊 质量检查结果:', qualityResult);
+        this.addDebugLog(`📊 质量检查: ${qualityResult.passed ? '通过' : '失败'}`);
         if (!qualityResult.passed) {
           this.addDebugLog(`失败原因: ${qualityResult.reason}`);
         }
 
         if (!qualityResult.passed) {
-          this.addDebugLog('质量不佳，重新检测');
+          console.log('❌ 质量不佳，重新检测');
+          this.addDebugLog('❌ 质量不佳，重新检测');
           this.playVoice(qualityResult.reason || '照片质量不佳，请重新拍摄');
           this.isCapturing = false; // 重置状态
           await this.delay(1200);
@@ -943,28 +1011,42 @@ export default {
           return;
         }
 
+        console.log('💾 保存照片');
+        this.addDebugLog('💾 保存照片');
         // 保存照片
         this.capturedPhotos = {
           ...this.capturedPhotos,
           [this.currentStepIndex]: imageDataUrl
         };
 
-        this.addDebugLog(`✅步骤${this.currentStepIndex}照片保存成功`);
+        console.log('✅ 照片保存成功，当前步骤:', this.currentStepIndex);
+        this.addDebugLog(`✅ 步骤${this.currentStepIndex}照片保存成功`);
 
         // 重置状态
         this.isCapturing = false;
         this.lastDetectionMetrics = null;
 
+        // 恢复原图片
+        setTimeout(() => {
+          this.showSolidOverlay = false;
+        }, 300);
+
         // 立即进入下一步（如果还有步骤）
         if (this.currentStepIndex < this.steps.length - 1) {
-          this.addDebugLog('进入下一步骤');
-          this.nextStep();
+          console.log('⏭️ 进入下一步骤');
+          this.addDebugLog('⏭️ 进入下一步骤');
+          // 延迟一下再进入下一步，确保UI更新完成
+          setTimeout(() => {
+            this.nextStep();
+          }, 500);
         } else {
-          this.addDebugLog('所有步骤完成');
+          console.log('🎉 所有步骤完成');
+          this.addDebugLog('🎉 所有步骤完成');
           this.showResults();
         }
       } catch (error) {
-        console.error('拍照失败:', error);
+        console.error('💥 拍照失败:', error);
+        this.addDebugLog('💥 拍照失败: ' + error.message);
         this.playVoice('拍照失败，请重试');
         this.isCapturing = false;
         this.startDetection();
@@ -988,12 +1070,19 @@ export default {
       this.consecutiveFailures = 0;
       this.lastDetectionMetrics = null;
       this.lastGoodDetectionTime = null;
+      this.showSolidOverlay = false;
 
       // 播放语音并开始新检测
       this.playVoice(this.currentStep.voice, true);
+
+      // 减少延迟，加快步骤切换
       setTimeout(() => {
-        this.startDetection();
-      }, 800);
+        if (!this.isDetecting) {  // 确保没有重复启动检测
+          console.log('🔄 启动新步骤检测');
+          this.addDebugLog('🔄 启动新步骤检测');
+          this.startDetection();
+        }
+      }, 600);
     },
 
     addUserInteractionListeners() {
@@ -1152,6 +1241,9 @@ export default {
     },
 
     showSuccessEffect() {
+      // 切换到实心图片
+      this.showSolidOverlay = true;
+
       // 添加成功闪烁效果
       const overlay = document.querySelector('.overlay');
       if (overlay) {
@@ -1524,9 +1616,9 @@ body {
 }
 
 @keyframes successFlash {
-  0% { background: rgba(0, 255, 0, 0); }
-  50% { background: rgba(0, 255, 0, 0.3); }
-  100% { background: rgba(0, 255, 0, 0); }
+  0% { background: rgba(255, 255, 255, 0); }
+  50% { background: rgba(255, 255, 255, 0.15); }
+  100% { background: rgba(255, 255, 255, 0); }
 }
 
 .voice-hint {

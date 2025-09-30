@@ -7,16 +7,9 @@ module.exports = defineConfig({
   devServer: {
     host: '0.0.0.0',
     port: 8080,
-    server: {
-      type: 'https',
-      options: {
-        // 忽略证书错误，用于开发环境
-        requestCert: false,
-        rejectUnauthorized: false
-      }
-    },
+    https: false, // 改为HTTP，避免证书问题
     client: {
-      webSocketURL: 'wss://0.0.0.0:8080/ws',
+      webSocketURL: 'auto://0.0.0.0:8080/ws',
     },
     // 允许从任何主机访问
     allowedHosts: 'all',
