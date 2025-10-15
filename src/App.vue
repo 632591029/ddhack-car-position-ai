@@ -1,5 +1,14 @@
 <template>
   <div class="app-container">
+    <!-- 首页 -->
+    <div v-if="showHomepage" class="home-container" @click="startDetection">
+      <img
+        src="@/assets/home.png"
+        alt="验车首页"
+        class="home-image"
+      />
+    </div>
+
     <div v-if="isLoading" class="loading-overlay">
       <div class="spinner"></div>
       <div>{{ loadingText }}</div>
@@ -10,7 +19,7 @@
       🚀 本地开发模式 - Mock数据已启用
     </div>
 
-    <div class="header-simple" v-show="!isLoading">
+    <div class="header-simple" v-show="!isLoading && !showHomepage">
       <div class="progress-steps">
         <div
           v-for="(step, index) in steps"
@@ -33,7 +42,7 @@
       </div>
     </div>
 
-    <div class="camera-container" v-show="!isLoading">
+    <div class="camera-container" v-show="!isLoading && !showHomepage">
       <video ref="videoRef" id="videoElement" autoplay playsinline muted></video>
       <div class="overlay">
         <div class="car-frame-large" :class="{ rear: isRearAngle }" :style="carFrameStyle"></div>
@@ -186,6 +195,7 @@ export default {
   data() {
     return {
       IS_LOCAL_DEV, // 暴露给模板使用
+      showHomepage: true,
       isLoading: true,
       loadingText: '正在初始化...',
       isUploading: false,
@@ -335,7 +345,7 @@ export default {
     await this.preloadImages();
     this.addDebugLog('📸 图片预加载完成');
 
-    await this.initApp();
+    // 显示首页，等待用户点击
   },
 
   beforeUnmount() {
@@ -344,6 +354,10 @@ export default {
   },
 
   methods: {
+    startDetection() {
+      this.showHomepage = false;
+      this.initApp();
+    },
     async preloadImages() {
       const imageUrls = [];
 
@@ -1589,6 +1603,22 @@ export default {
   padding: 0;
   box-sizing: border-box;
   -webkit-tap-highlight-color: transparent;
+}
+
+.home-container {
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #f5f5f5;
+  cursor: pointer;
+}
+
+.home-image {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
 }
 
 .dev-mode-indicator {
