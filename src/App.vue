@@ -908,7 +908,8 @@ export default {
           return;
         }
 
-        this.addDebugLog(`✅满足拍照条件 - 置信度:${this.confidence?.toFixed(2)}, 面积比:${(metrics.areaRatio||0).toFixed(2)}, IoU:${(metrics.iou||0).toFixed(2)}`);
+        const metrics = result.metrics || {};
+        this.addDebugLog(`✅满足拍照条件 - 置信度:${this.confidence?.toFixed(2)}, 状态:${result.frameStatus}, 面积比:${(metrics.areaRatio||0).toFixed(2)}, IoU:${(metrics.iou||0).toFixed(2)}`);
         this.stopDetection(); // 停止检测，防止重复
         this.isCapturing = true; // 标记拍摄状态
         this.playVoice('拍照中', true);
