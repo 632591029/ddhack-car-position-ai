@@ -3,7 +3,7 @@
     <!-- 首页 -->
     <div v-if="showHomepage" class="home-container" @click="startDetection">
       <img
-        src="@/assets/home.png"
+        src="https://s3-gz01.didistatic.com/packages-mait/img/3JVJusfFxI1760504621741.png"
         alt="验车首页"
         class="home-image"
       />
@@ -345,7 +345,8 @@ export default {
     await this.preloadImages();
     this.addDebugLog('📸 图片预加载完成');
 
-    // 显示首页，等待用户点击
+    // 初始化完成，显示首页
+    this.isLoading = false;
   },
 
   beforeUnmount() {
@@ -1628,16 +1629,17 @@ export default {
   width: 100vw;
   height: 100vh;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
   background-color: #f5f5f5;
   cursor: pointer;
+  overflow: hidden;
 }
 
 .home-image {
-  max-width: 100%;
-  max-height: 100%;
-  object-fit: contain;
+  width: 100%;
+  height: auto;
+  object-fit: cover;
 }
 
 .dev-mode-indicator {
