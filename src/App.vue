@@ -355,8 +355,87 @@ export default {
 
   methods: {
     startDetection() {
-      this.showHomepage = false;
-      this.initApp();
+      // 如果是从首页进入，先隐藏首页
+      if (this.showHomepage) {
+        this.showHomepage = false;
+        this.initApp();
+        return;
+      }
+
+      console.log('🔄 startDetection 被调用', {
+        isDetecting: this.isDetecting,
+        currentStep: this.currentStepIndex,
+        isCapturing: this.isCapturing,
+        showResultsModal: this.showResultsModal
+      });
+      this.addDebugLog(`🔄 startDetection - isDetecting:${this.isDetecting}, step:${this.currentStepIndex}`);
+
+      if (this.isDetecting) {
+        console.log('⚠️ 检测已在运行，跳过启动');
+        this.addDebugLog('⚠️ 检测已在运行，跳过启动');
+        return;
+      }
+
+      if (this.isCapturing || this.showResultsModal) {
+        console.log('⚠️ 正在拍照或显示结果，跳过检测启动');
+        this.addDebugLog('⚠️ 正在拍照或显示结果，跳过检测启动');
+        return;
+      }
+
+      this.isDetecting = true;
+      this.addDebugLog('✅ 开始检测循环');
+
+      // 开始新的检测前清理旧数据
+      this.lastDetectionMetrics = null;
+      this.consecutiveFailures = 0;
+      this.lastGoodDetectionTime = null;
+      this.frameStatus = 'detecting';
+      this.confidence = 0;
+      this.statusText = '';
+      this.showVoiceHint = false;
+      this.voiceHintText = '';
+
+      console.log('✅ 设置 isDetecting = true');
+      this.addDebugLog('✅ 检测状态已启动');
+
+      let detectionCount = 0; // 添加计数器
+      const runDetection = async () => {
+        detectionCount++;
+        console.log(`🔍 检测循环 #${detectionCount} 开始`, {
+          isDetecting: this.isDetecting,
+          step: this.currentStepIndex,
+          time: new Date().toLocaleTimeString()
+        });
+        this.addDebugLog(`🔍 检测循环 #${detectionCount} - ${new Date().toLocaleTimeString()}`);
+
+        if (!this.isDetecting) {
+          console.log('❌ isDetecting = false, 退出循环');
+          this.addDebugLog('❌ 检测状态为false，退出循环');
+          return;
+        }
+
+        try {
+          await this.detectVehicleAlignment();
+          console.log(`✅ 检测循环 #${detectionCount} 完成`);
+        } catch (error) {
+          console.error(`💥 检测循环 #${detectionCount} 异常:`, error);
+          this.addDebugLog(`💥 检测异常: ${error.message}`);
+        }
+
+        if (this.isDetecting) {
+          // 简化间隔逻辑
+          const interval = USE_BAIDU_API ? BAIDU_DETECTION_INTERVAL_MS : DETECTION_INTERVAL_MS;
+          console.log(`⏰ 设置下次检测间隔: ${interval}ms`);
+          this.detectionTimer = setTimeout(runDetection, interval);
+        } else {
+          console.log('🛑 isDetecting = false, 不设置下次检测');
+          this.addDebugLog('🛑 检测已停止，不设置下次检测');
+        }
+      };
+
+      console.log('🚀 启动首次检测');
+      this.addDebugLog('🚀 启动首次检测');
+      runDetection();
     },
     async preloadImages() {
       const imageUrls = [];
@@ -534,66 +613,6 @@ export default {
       this.detectionCanvas.height = targetHeight;
     },
 
-    startDetection() {
-      console.log('🔄 startDetection 被调用', {
-        isDetecting: this.isDetecting,
-        currentStep: this.currentStepIndex,
-        isCapturing: this.isCapturing,
-        showResultsModal: this.showResultsModal
-      });
-      this.addDebugLog(`🔄 startDetection - isDetecting:${this.isDetecting}, step:${this.currentStepIndex}`);
-
-      if (this.isDetecting) {
-        console.log('⚠️ 检测已在运行，跳过启动');
-        this.addDebugLog('⚠️ 检测已在运行，跳过启动');
-        return;
-      }
-
-      // 开始新的检测前清理旧数据
-      this.lastDetectionMetrics = null;
-      this.isDetecting = true;
-      console.log('✅ 设置 isDetecting = true');
-      this.addDebugLog('✅ 检测状态已启动');
-
-      let detectionCount = 0; // 添加计数器
-      const runDetection = async () => {
-        detectionCount++;
-        console.log(`🔍 检测循环 #${detectionCount} 开始`, {
-          isDetecting: this.isDetecting,
-          step: this.currentStepIndex,
-          time: new Date().toLocaleTimeString()
-        });
-        this.addDebugLog(`🔍 检测循环 #${detectionCount} - ${new Date().toLocaleTimeString()}`);
-
-        if (!this.isDetecting) {
-          console.log('❌ isDetecting = false, 退出循环');
-          this.addDebugLog('❌ 检测状态为false，退出循环');
-          return;
-        }
-
-        try {
-          await this.detectVehicleAlignment();
-          console.log(`✅ 检测循环 #${detectionCount} 完成`);
-        } catch (error) {
-          console.error(`💥 检测循环 #${detectionCount} 异常:`, error);
-          this.addDebugLog(`💥 检测异常: ${error.message}`);
-        }
-
-        if (this.isDetecting) {
-          // 简化间隔逻辑
-          const interval = USE_BAIDU_API ? BAIDU_DETECTION_INTERVAL_MS : DETECTION_INTERVAL_MS;
-          console.log(`⏰ 设置下次检测间隔: ${interval}ms`);
-          this.detectionTimer = setTimeout(runDetection, interval);
-        } else {
-          console.log('🛑 isDetecting = false, 不设置下次检测');
-          this.addDebugLog('🛑 检测已停止，不设置下次检测');
-        }
-      };
-
-      console.log('🚀 启动首次检测');
-      this.addDebugLog('🚀 启动首次检测');
-      runDetection();
-    },
 
     stopDetection() {
       console.log('🛑 stopDetection 被调用', {
