@@ -162,7 +162,7 @@ const CAR_SECRET_KEY = "ZqTw4y1denK2RS3SsD9VACpvIDNua0OF";
 // 本地开发模式：检测hostname自动启用mock模式
 const IS_LOCAL_DEV = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
 const USE_BAIDU_API = !IS_LOCAL_DEV; // 本地开发时关闭百度API
-const BAIDU_MIN_CONFIDENCE = 0.65; // 降低百度API置信度阈值，提高车辆后部识别率
+const BAIDU_MIN_CONFIDENCE = 0.55; // 进一步降低百度API置信度阈值，特别针对车辆后部
 const DETECTION_INTERVAL_MS = IS_LOCAL_DEV ? 800 : 1200; // 本地开发时更快检测
 const BAIDU_DETECTION_INTERVAL_MS = 1400; // 百度API检测间隔，平衡响应速度和API成本
 const DEBUG_MODE = true; // 调试模式，显示详细信息
@@ -651,8 +651,8 @@ export default {
           const analysis = analyzeAlignment(detection, this.currentExpectedRegion);
           this.updateDetectionStatus(analysis);
         } else {
-          console.log('❌ 未检测到车辆');
-          this.addDebugLog(`❌ 未检测到车辆 (连续失败: ${this.consecutiveFailures + 1})`);
+          console.log('❌ 百度API未检测到车辆');
+          this.addDebugLog(`❌ 百度API无车辆 (连续失败: ${this.consecutiveFailures + 1})`);
           this.consecutiveFailures++; // 增加失败计数
           this.updateDetectionStatus({
             hasVehicle: false,
@@ -665,9 +665,22 @@ export default {
           this.handleConsecutiveErrorVoice();
         }
       } catch (error) {
-        console.error('💥 车辆检测失败:', error);
-        this.addDebugLog(`💥 检测失败: ${error.message}`);
-        this.useMockDetection();
+        console.error('💥 百度API调用失败:', error);
+        this.addDebugLog(`💥 API调用异常: ${error.message}`);
+
+        // 🚨 关键修复：只有在API调用真正异常时才fallback到Mock，不是检测结果为空时
+        // 检测结果为空是正常情况（真的没有车），不应该用Mock覆盖
+        if (USE_BAIDU_API) {
+          this.addDebugLog('⚠️ API异常，但不使用Mock覆盖结果');
+          this.updateDetectionStatus({
+            hasVehicle: false,
+            confidence: 0,
+            frameStatus: 'detecting',
+            message: 'API调用失败，请检查网络连接'
+          });
+        } else {
+          this.useMockDetection();
+        }
       }
     },
 
@@ -742,6 +755,7 @@ export default {
       const response = await this.callBaiduVehicleAPI(base64Image);
 
       if (!response || !response.vehicle_info || !response.vehicle_info.length) {
+        this.addDebugLog('❌ 百度API返回：完全无车辆信息');
         return { hasVehicle: false };
       }
 
@@ -764,7 +778,7 @@ export default {
           step: this.currentStep?.title || 'unknown'
         });
 
-        this.addDebugLog(`❌ 百度API无车辆: 总${allVehicles.length}个, car类型${carVehicles.length}个, 最高置信度${(maxConfidence*100).toFixed(1)}%, 阈值${(MIN_CONFIDENCE*100).toFixed(1)}%`);
+        this.addDebugLog(`❌ 置信度过滤: 总${allVehicles.length}个, car类型${carVehicles.length}个, 最高置信度${(maxConfidence*100).toFixed(1)}%, 阈值${(MIN_CONFIDENCE*100).toFixed(1)}%`);
 
         return { hasVehicle: false };
       }
@@ -778,23 +792,15 @@ export default {
       console.log(`检测到车辆，置信度: ${(vehicle.probability * 100).toFixed(1)}%`);
       const bbox = this.normalizeLocation(vehicle.location);
 
-      // 车辆尺寸合理性检查：防止误检小物体或异常大的区域
+      // 🎯 信任百度API的专业判断，移除过度的尺寸验证
+      // 只做最基本的异常值过滤，防止明显错误的结果
       const vehicleArea = bbox.width * bbox.height;
       const aspectRatio = bbox.width / bbox.height;
-      const isRearAngle = this.currentStep?.title?.includes('后') || false;
 
-      // 针对车辆后部，放宽尺寸要求
-      const minArea = isRearAngle ? 0.03 : 0.05; // 后部允许更小面积
-      const maxArea = 0.9;
-      const minAspectRatio = isRearAngle ? 0.4 : 0.5; // 后部允许更窄的宽高比
-      const maxAspectRatio = 3.5;
-
-      const isReasonableSize = vehicleArea >= minArea && vehicleArea <= maxArea;
-      const hasValidAspectRatio = aspectRatio >= minAspectRatio && aspectRatio <= maxAspectRatio;
-
-      if (!isReasonableSize || !hasValidAspectRatio) {
-        console.log(`车辆尺寸不合理: 面积${(vehicleArea*100).toFixed(1)}% (要求${(minArea*100).toFixed(1)}-${(maxArea*100).toFixed(1)}%), 宽高比${aspectRatio.toFixed(2)} (要求${minAspectRatio}-${maxAspectRatio}), 角度:${this.currentStep?.title}`);
-        this.addDebugLog(`❌ 车辆尺寸不符: 面积${(vehicleArea*100).toFixed(1)}%, 宽高比${aspectRatio.toFixed(2)}, 角度:${this.currentStep?.title}`);
+      // 只过滤极端异常的情况（可能是API错误）
+      if (vehicleArea < 0.005 || vehicleArea > 0.99 || aspectRatio < 0.1 || aspectRatio > 10) {
+        console.log(`极端异常尺寸: 面积${(vehicleArea*100).toFixed(1)}%, 宽高比${aspectRatio.toFixed(2)}`);
+        this.addDebugLog(`❌ 极端异常: 面积${(vehicleArea*100).toFixed(1)}%, 宽高比${aspectRatio.toFixed(2)} - 可能是API错误`);
         return { hasVehicle: false };
       }
 
@@ -1131,7 +1137,7 @@ export default {
         if (this.currentStepIndex < this.steps.length - 1) {
           setTimeout(() => {
             this.nextStep();
-          }, 300);
+          }, 800); // 增加延迟，确保状态完全清理
         } else {
           this.showResults();
         }
@@ -1219,7 +1225,7 @@ export default {
           // 延迟一下再进入下一步，确保UI更新完成
           setTimeout(() => {
             this.nextStep();
-          }, 500);
+          }, 800); // 增加延迟，确保状态完全清理
         } else {
           console.log('🎉 所有步骤完成');
           this.addDebugLog('🎉 所有步骤完成');
@@ -1256,14 +1262,17 @@ export default {
       // 播放语音并开始新检测
       this.playVoice(this.currentStep.voice, true);
 
-      // 减少延迟，加快步骤切换
+      // 增加延迟，确保前一个检测完全停止
       setTimeout(() => {
-        if (!this.isDetecting) {  // 确保没有重复启动检测
+        if (!this.isDetecting && !this.isCapturing) {  // 双重检查状态
           console.log('🔄 启动新步骤检测');
           this.addDebugLog('🔄 启动新步骤检测');
           this.startDetection();
+        } else {
+          console.log('⚠️ 检测或拍摄状态异常，不启动新检测', { isDetecting: this.isDetecting, isCapturing: this.isCapturing });
+          this.addDebugLog(`⚠️ 状态异常，不启动检测 - detecting:${this.isDetecting}, capturing:${this.isCapturing}`);
         }
-      }, 600);
+      }, 1000); // 进一步增加延迟
     },
 
     addUserInteractionListeners() {
