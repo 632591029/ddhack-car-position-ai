@@ -896,13 +896,10 @@ export default {
       // alignment.js已经综合考虑了IoU、面积、位置、置信度等所有因素
       const autoThreshold = DEBUG_MODE ? 0.70 : 0.75; // 稍微提高阈值，确保质量
 
-      // 线上环境需要更严格的检查，防止误拍地面
-      const metrics = result.metrics || {};
+      // 信任alignment的专业判断，避免重复逻辑
       const canAuto = result.hasVehicle &&
                      result.frameStatus === 'matched' &&
-                     this.confidence >= autoThreshold &&
-                     (metrics.areaRatio || 0) >= 0.70 &&  // 恢复面积检查，防止误检地面
-                     (metrics.iou || 0) >= 0.60;          // 恢复IoU检查，确保车辆完整
+                     this.confidence >= autoThreshold;
 
       if (canAuto) {
         // 🚨 拍照前最后一次检查，确保步骤未完成
@@ -912,6 +909,7 @@ export default {
           return;
         }
 
+        const metrics = result.metrics || {};
         this.addDebugLog(`✅满足拍照条件 - 置信度:${this.confidence?.toFixed(2)}, 状态:${result.frameStatus}, 面积比:${(metrics.areaRatio||0).toFixed(2)}, IoU:${(metrics.iou||0).toFixed(2)}`);
         this.stopDetection(); // 停止检测，防止重复
         this.isCapturing = true; // 标记拍摄状态
