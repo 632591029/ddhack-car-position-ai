@@ -1246,8 +1246,18 @@ export default {
 
     nextStep() {
       // 🚨 确保彻底停止当前检测
+      console.log('🔄 nextStep开始 - 强制停止所有检测活动');
+      this.addDebugLog('🔄 nextStep - 强制停止检测');
+
       this.stopDetection();
       this.isCapturing = false;
+
+      // 强制清除所有可能的定时器
+      if (this.detectionTimer) {
+        clearTimeout(this.detectionTimer);
+        this.detectionTimer = null;
+        console.log('🧹 强制清除检测定时器');
+      }
 
       // 更新步骤
       const oldStep = this.currentStepIndex;
