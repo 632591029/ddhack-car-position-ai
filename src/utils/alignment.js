@@ -2,7 +2,7 @@ const DEFAULT_THRESHOLDS = {
   matchedConfidence: 0.70, // 降低阈值，以完整车辆为主
   goodConfidence: 0.60,
   adjustConfidence: 0.45,
-  matchedIoU: 0.50  // 降低IoU要求，注重车辆完整性而非精确对准
+  matchedIoU: 0.65  // 提高IoU要求，确保车辆完整覆盖，防止半车拍照
 };
 
 function clamp(value, min, max) {

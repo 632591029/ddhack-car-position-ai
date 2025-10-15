@@ -871,10 +871,10 @@ export default {
 
       this.logDetectionMetrics(result);
 
-      // 🚨 核心逻辑：如果当前步骤已完成，立即停止检测，避免误拍
-      if (this.capturedPhotos[this.currentStepIndex]) {
+      // 🚨 核心逻辑：如果当前步骤已完成或显示结果页面，立即停止检测，避免误拍
+      if (this.capturedPhotos[this.currentStepIndex] || this.showResultsModal) {
         if (this.isDetecting) {
-          this.addDebugLog('当前步骤已完成，停止检测');
+          this.addDebugLog(this.showResultsModal ? '显示结果页面，停止检测' : '当前步骤已完成，停止检测');
           this.stopDetection();
         }
         return;
@@ -892,14 +892,13 @@ export default {
         return;
       }
 
-      // 简化拍照条件：重点是有车辆 + 基本质量要求
-      const autoThreshold = DEBUG_MODE ? 0.65 : 0.75;
-      const metrics = result.metrics || {};
+      // 🎯 信任alignment分析的综合评估，避免重复检查
+      // alignment.js已经综合考虑了IoU、面积、位置、置信度等所有因素
+      const autoThreshold = DEBUG_MODE ? 0.70 : 0.75; // 稍微提高阈值，确保质量
 
       const canAuto = result.hasVehicle &&
-                     this.confidence >= autoThreshold &&
-                     (metrics.areaRatio || 0) >= 0.70 &&
-                     (metrics.iou || 0) >= 0.45;
+                     result.frameStatus === 'matched' && // 直接使用alignment的判断
+                     this.confidence >= autoThreshold;
 
       if (canAuto) {
         // 🚨 拍照前最后一次检查，确保步骤未完成
@@ -1450,7 +1449,19 @@ export default {
 
 
     showResults() {
+      console.log('🎉 显示结果页面，强制停止所有检测');
+      this.addDebugLog('🎉 显示结果页面，强制停止检测');
+
+      // 强制停止检测和拍摄状态
       this.stopDetection();
+      this.isCapturing = false;
+
+      // 清除可能存在的延迟检测
+      if (this.detectionTimer) {
+        clearTimeout(this.detectionTimer);
+        this.detectionTimer = null;
+      }
+
       this.showResultsModal = true;
       this.playVoice('所有角度拍摄完成');
     },
