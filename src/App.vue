@@ -162,7 +162,7 @@ const CAR_SECRET_KEY = "ZqTw4y1denK2RS3SsD9VACpvIDNua0OF";
 // 本地开发模式：检测hostname自动启用mock模式
 const IS_LOCAL_DEV = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
 const USE_BAIDU_API = !IS_LOCAL_DEV; // 本地开发时关闭百度API
-const BAIDU_MIN_CONFIDENCE = 0.75; // 提高百度API置信度阈值，防止误检地面
+const BAIDU_MIN_CONFIDENCE = 0.65; // 降低百度API置信度阈值，提高车辆后部识别率
 const DETECTION_INTERVAL_MS = IS_LOCAL_DEV ? 800 : 1200; // 本地开发时更快检测
 const BAIDU_DETECTION_INTERVAL_MS = 1400; // 百度API检测间隔，平衡响应速度和API成本
 const DEBUG_MODE = true; // 调试模式，显示详细信息
@@ -629,14 +629,14 @@ export default {
 
         if (USE_BAIDU_API && this.accessToken) {
           console.log('🌐 使用百度API检测');
-          this.addDebugLog('🌐 调用百度API');
+          this.addDebugLog(`🌐 百度API检测 - 域名:${window.location.hostname}, Token:${this.accessToken ? '有' : '无'}`);
           detection = await this.detectWithBaidu();
           const apiTime = performance.now() - startTime;
           console.log(`🌐 百度API耗时: ${apiTime.toFixed(1)}ms`, detection);
           this.addDebugLog(`🌐 API耗时: ${apiTime.toFixed(1)}ms, 结果: ${detection?.hasVehicle ? '有车' : '无车'}`);
         } else {
-          console.log('🏠 使用Mock检测');
-          this.addDebugLog('🏠 使用Mock检测');
+          console.log('🏠 使用Mock检测 - 原因:', USE_BAIDU_API ? '无Token' : '本地开发');
+          this.addDebugLog(`🏠 fallback到Mock - USE_BAIDU_API:${USE_BAIDU_API}, Token:${this.accessToken ? '有' : '无'}`);
           // 直接使用mock数据，跳过边缘检测
           this.useMockDetection();
           return;
@@ -752,8 +752,20 @@ export default {
       );
 
       if (!vehicles.length) {
-        console.log('未检测到高置信度车辆，最高置信度:',
-          Math.max(...response.vehicle_info.map(v => v.probability)).toFixed(3));
+        const allVehicles = response.vehicle_info || [];
+        const maxConfidence = allVehicles.length > 0 ? Math.max(...allVehicles.map(v => v.probability)) : 0;
+        const carVehicles = allVehicles.filter(v => v.type === 'car');
+
+        console.log('未检测到高置信度车辆，详细信息:', {
+          total: allVehicles.length,
+          carType: carVehicles.length,
+          maxConfidence: maxConfidence.toFixed(3),
+          threshold: MIN_CONFIDENCE,
+          step: this.currentStep?.title || 'unknown'
+        });
+
+        this.addDebugLog(`❌ 百度API无车辆: 总${allVehicles.length}个, car类型${carVehicles.length}个, 最高置信度${(maxConfidence*100).toFixed(1)}%, 阈值${(MIN_CONFIDENCE*100).toFixed(1)}%`);
+
         return { hasVehicle: false };
       }
 
@@ -768,15 +780,27 @@ export default {
 
       // 车辆尺寸合理性检查：防止误检小物体或异常大的区域
       const vehicleArea = bbox.width * bbox.height;
-      const isReasonableSize = vehicleArea >= 0.05 && vehicleArea <= 0.9; // 车辆应该占图像5%-90%
-      const hasValidAspectRatio = bbox.width/bbox.height >= 0.5 && bbox.width/bbox.height <= 3.0; // 宽高比合理
+      const aspectRatio = bbox.width / bbox.height;
+      const isRearAngle = this.currentStep?.title?.includes('后') || false;
+
+      // 针对车辆后部，放宽尺寸要求
+      const minArea = isRearAngle ? 0.03 : 0.05; // 后部允许更小面积
+      const maxArea = 0.9;
+      const minAspectRatio = isRearAngle ? 0.4 : 0.5; // 后部允许更窄的宽高比
+      const maxAspectRatio = 3.5;
+
+      const isReasonableSize = vehicleArea >= minArea && vehicleArea <= maxArea;
+      const hasValidAspectRatio = aspectRatio >= minAspectRatio && aspectRatio <= maxAspectRatio;
 
       if (!isReasonableSize || !hasValidAspectRatio) {
-        console.log(`车辆尺寸不合理: 面积${(vehicleArea*100).toFixed(1)}%, 宽高比${(bbox.width/bbox.height).toFixed(2)}`);
+        console.log(`车辆尺寸不合理: 面积${(vehicleArea*100).toFixed(1)}% (要求${(minArea*100).toFixed(1)}-${(maxArea*100).toFixed(1)}%), 宽高比${aspectRatio.toFixed(2)} (要求${minAspectRatio}-${maxAspectRatio}), 角度:${this.currentStep?.title}`);
+        this.addDebugLog(`❌ 车辆尺寸不符: 面积${(vehicleArea*100).toFixed(1)}%, 宽高比${aspectRatio.toFixed(2)}, 角度:${this.currentStep?.title}`);
         return { hasVehicle: false };
       }
 
-        return {
+      this.addDebugLog(`✅ 百度API检测成功: 置信度${(vehicle.probability*100).toFixed(1)}%, 面积${(vehicleArea*100).toFixed(1)}%, 宽高比${aspectRatio.toFixed(2)}, 角度:${this.currentStep?.title}`);
+
+      return {
         hasVehicle: true,
         bbox,
         score: vehicle.probability, // 使用百度的置信度
@@ -855,6 +879,13 @@ export default {
         return;
       }
 
+      // 🚨 新增：再次检查当前步骤是否已完成，防止步骤切换延迟期间误拍
+      if (this.capturedPhotos[this.currentStepIndex]) {
+        this.addDebugLog('⚠️ 步骤已完成但检测仍在运行，停止检测');
+        this.stopDetection();
+        return;
+      }
+
       // 简化拍照条件：重点是有车辆 + 基本质量要求
       const autoThreshold = DEBUG_MODE ? 0.65 : 0.75;
       const metrics = result.metrics || {};
@@ -865,6 +896,13 @@ export default {
                      (metrics.iou || 0) >= 0.45;
 
       if (canAuto) {
+        // 🚨 拍照前最后一次检查，确保步骤未完成
+        if (this.capturedPhotos[this.currentStepIndex]) {
+          this.addDebugLog('⚠️ 拍照前发现步骤已完成，取消拍照');
+          this.stopDetection();
+          return;
+        }
+
         this.addDebugLog(`✅满足拍照条件 - 置信度:${this.confidence?.toFixed(2)}, 面积比:${(metrics.areaRatio||0).toFixed(2)}, IoU:${(metrics.iou||0).toFixed(2)}`);
         this.stopDetection(); // 停止检测，防止重复
         this.isCapturing = true; // 标记拍摄状态
@@ -903,6 +941,9 @@ export default {
     },
 
     useMockDetection() {
+      console.log('🏠 使用Mock检测模式');
+      this.addDebugLog(`🏠 Mock检测 - 域名:${window.location.hostname}, USE_BAIDU_API:${USE_BAIDU_API}, IS_LOCAL_DEV:${IS_LOCAL_DEV}`);
+
       const expected = this.currentExpectedRegion;
 
       // 如果当前步骤已拍摄，不再生成成功的检测结果
@@ -917,8 +958,9 @@ export default {
         return;
       }
 
-      // 本地开发模式：提高自动拍照成功率至95%
-      const shouldAutoCapture = Math.random() < 0.95;
+      // 本地开发模式：降低自动拍照成功率，模拟真实检测
+      const shouldAutoCapture = Math.random() < 0.30;
+      this.addDebugLog(`🎲 Mock随机结果: ${shouldAutoCapture ? '成功' : '失败'}`);
 
       let jitterX, jitterY, scale;
       if (shouldAutoCapture) {
