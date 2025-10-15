@@ -101,6 +101,14 @@
         </div>
 
         <div class="debug-section">
+          <h4>检测状态</h4>
+          <div>检测运行: {{ isDetecting ? '是' : '否' }}</div>
+          <div>拍摄中: {{ isCapturing ? '是' : '否' }}</div>
+          <div>定时器: {{ detectionTimer ? '有' : '无' }}</div>
+          <div>连续失败: {{ consecutiveFailures }}</div>
+        </div>
+
+        <div class="debug-section">
           <h4>实时日志</h4>
           <div v-for="log in debugLog" :key="log" class="debug-log-item">{{ log }}</div>
         </div>
@@ -312,6 +320,8 @@ export default {
   },
 
   async mounted() {
+    this.addDebugLog('🚀 应用开始初始化');
+
     document.addEventListener('visibilitychange', this.handleVisibilityChange);
 
     // 添加用户交互监听器，以启用语音功能
@@ -321,7 +331,9 @@ export default {
     this.initSpeechSynthesis();
 
     // 预加载图片
+    this.addDebugLog('📸 开始预加载图片');
     await this.preloadImages();
+    this.addDebugLog('📸 图片预加载完成');
 
     await this.initApp();
   },
@@ -366,19 +378,32 @@ export default {
 
     async initApp() {
       try {
+        this.addDebugLog('🔧 开始初始化应用');
+
         if (this.useSampleDebug) {
+          this.addDebugLog('🖼️ 加载样例图片');
           await this.loadSampleImage();
         } else {
           if (USE_BAIDU_API) {
+            this.addDebugLog('🔑 获取百度API访问令牌');
             await this.getBaiduAccessToken();
+            this.addDebugLog('✅ 百度API令牌获取成功');
+          } else {
+            this.addDebugLog('🏠 跳过百度API（本地模式）');
           }
+          this.addDebugLog('📹 初始化摄像头');
           await this.initCamera();
+          this.addDebugLog('✅ 摄像头初始化成功');
         }
+
         this.isLoading = false;
+        this.addDebugLog('🎤 播放初始语音提示');
         this.playVoice(this.currentStep.voice, true); // 强制播放初始步骤语音
+        this.addDebugLog('🔄 启动检测流程');
         this.startDetection();
       } catch (error) {
         console.error('初始化失败:', error);
+        this.addDebugLog(`💥 初始化失败: ${error.message}`);
         alert('初始化失败: ' + error.message);
         this.isLoading = false;
       }
@@ -496,50 +521,122 @@ export default {
     },
 
     startDetection() {
+      console.log('🔄 startDetection 被调用', {
+        isDetecting: this.isDetecting,
+        currentStep: this.currentStepIndex,
+        isCapturing: this.isCapturing,
+        showResultsModal: this.showResultsModal
+      });
+      this.addDebugLog(`🔄 startDetection - isDetecting:${this.isDetecting}, step:${this.currentStepIndex}`);
+
       if (this.isDetecting) {
+        console.log('⚠️ 检测已在运行，跳过启动');
+        this.addDebugLog('⚠️ 检测已在运行，跳过启动');
         return;
       }
 
       // 开始新的检测前清理旧数据
       this.lastDetectionMetrics = null;
       this.isDetecting = true;
+      console.log('✅ 设置 isDetecting = true');
+      this.addDebugLog('✅ 检测状态已启动');
 
+      let detectionCount = 0; // 添加计数器
       const runDetection = async () => {
+        detectionCount++;
+        console.log(`🔍 检测循环 #${detectionCount} 开始`, {
+          isDetecting: this.isDetecting,
+          step: this.currentStepIndex,
+          time: new Date().toLocaleTimeString()
+        });
+        this.addDebugLog(`🔍 检测循环 #${detectionCount} - ${new Date().toLocaleTimeString()}`);
+
         if (!this.isDetecting) {
+          console.log('❌ isDetecting = false, 退出循环');
+          this.addDebugLog('❌ 检测状态为false，退出循环');
           return;
         }
 
-        await this.detectVehicleAlignment();
+        try {
+          await this.detectVehicleAlignment();
+          console.log(`✅ 检测循环 #${detectionCount} 完成`);
+        } catch (error) {
+          console.error(`💥 检测循环 #${detectionCount} 异常:`, error);
+          this.addDebugLog(`💥 检测异常: ${error.message}`);
+        }
 
         if (this.isDetecting) {
           // 简化间隔逻辑
           const interval = USE_BAIDU_API ? BAIDU_DETECTION_INTERVAL_MS : DETECTION_INTERVAL_MS;
+          console.log(`⏰ 设置下次检测间隔: ${interval}ms`);
           this.detectionTimer = setTimeout(runDetection, interval);
+        } else {
+          console.log('🛑 isDetecting = false, 不设置下次检测');
+          this.addDebugLog('🛑 检测已停止，不设置下次检测');
         }
       };
 
+      console.log('🚀 启动首次检测');
+      this.addDebugLog('🚀 启动首次检测');
       runDetection();
     },
 
     stopDetection() {
+      console.log('🛑 stopDetection 被调用', {
+        isDetecting: this.isDetecting,
+        hasTimer: !!this.detectionTimer,
+        currentStep: this.currentStepIndex,
+        reason: new Error().stack?.split('\n')[2]?.trim() // 获取调用栈信息
+      });
+      this.addDebugLog(`🛑 stopDetection - isDetecting:${this.isDetecting}, hasTimer:${!!this.detectionTimer}`);
+
       if (this.detectionTimer) {
+        console.log('⏰ 清除检测定时器');
         clearTimeout(this.detectionTimer);
         this.detectionTimer = null;
+        this.addDebugLog('⏰ 定时器已清除');
       }
+
       this.isDetecting = false;
+      console.log('✅ 设置 isDetecting = false');
+      this.addDebugLog('✅ 检测状态已停止');
     },
 
     async detectVehicleAlignment() {
-      if (!this.$refs.videoRef || document.hidden) {
+      console.log('🔍 detectVehicleAlignment 开始', {
+        hasVideoRef: !!this.$refs.videoRef,
+        documentHidden: document.hidden,
+        currentStep: this.currentStepIndex,
+        time: new Date().toLocaleTimeString()
+      });
+      this.addDebugLog(`🔍 开始车辆对齐检测 - step:${this.currentStepIndex}`);
+
+      if (!this.$refs.videoRef) {
+        console.log('❌ videoRef 不存在');
+        this.addDebugLog('❌ videoRef 不存在');
+        return;
+      }
+
+      if (document.hidden) {
+        console.log('📱 页面隐藏，跳过检测');
+        this.addDebugLog('📱 页面隐藏，跳过检测');
         return;
       }
 
       try {
         let detection;
+        const startTime = performance.now();
 
         if (USE_BAIDU_API && this.accessToken) {
+          console.log('🌐 使用百度API检测');
+          this.addDebugLog('🌐 调用百度API');
           detection = await this.detectWithBaidu();
+          const apiTime = performance.now() - startTime;
+          console.log(`🌐 百度API耗时: ${apiTime.toFixed(1)}ms`, detection);
+          this.addDebugLog(`🌐 API耗时: ${apiTime.toFixed(1)}ms, 结果: ${detection?.hasVehicle ? '有车' : '无车'}`);
         } else {
+          console.log('🏠 使用Mock检测');
+          this.addDebugLog('🏠 使用Mock检测');
           // 直接使用mock数据，跳过边缘检测
           this.useMockDetection();
           return;
@@ -547,11 +644,15 @@ export default {
 
         // 只有检测到车辆时才进行对齐分析
         if (detection && detection.hasVehicle) {
+          console.log('✅ 检测到车辆，进行对齐分析');
+          this.addDebugLog('✅ 检测到车辆，分析对齐');
           this.consecutiveFailures = 0; // 重置失败计数
           this.lastErrorVoiceTime = null; // 清空错误语音时间戳
           const analysis = analyzeAlignment(detection, this.currentExpectedRegion);
           this.updateDetectionStatus(analysis);
         } else {
+          console.log('❌ 未检测到车辆');
+          this.addDebugLog(`❌ 未检测到车辆 (连续失败: ${this.consecutiveFailures + 1})`);
           this.consecutiveFailures++; // 增加失败计数
           this.updateDetectionStatus({
             hasVehicle: false,
@@ -564,7 +665,8 @@ export default {
           this.handleConsecutiveErrorVoice();
         }
       } catch (error) {
-        console.error('车辆检测失败:', error);
+        console.error('💥 车辆检测失败:', error);
+        this.addDebugLog(`💥 检测失败: ${error.message}`);
         this.useMockDetection();
       }
     },
@@ -1188,11 +1290,15 @@ export default {
 
     addDebugLog(message) {
       const time = new Date().toLocaleTimeString();
-      this.debugLog.unshift(`${time}: ${message}`);
-      // 只保留最近10条日志
-      if (this.debugLog.length > 10) {
-        this.debugLog = this.debugLog.slice(0, 10);
+      const logEntry = `${time}: ${message}`;
+      this.debugLog.unshift(logEntry);
+      // 保留最近15条日志，增加容量
+      if (this.debugLog.length > 15) {
+        this.debugLog = this.debugLog.slice(0, 15);
       }
+
+      // 同时输出到console，方便开发调试
+      console.log(`[DEBUG] ${logEntry}`);
     },
 
 
