@@ -286,12 +286,12 @@ export default {
 
       const regions = {
         normal: {
-          front: { x: 0.08, y: 0.28, width: 0.78, height: 0.32 },  // 基于实际测试数据
-          rear:  { x: 0.10, y: 0.32, width: 0.76, height: 0.27 },  // 后侧按比例缩小
+          front: { x: 0.087, y: 0.34, width: 0.82, height: 0.31 },  // 更精确匹配你的测试数据
+          rear:  { x: 0.10, y: 0.36, width: 0.80, height: 0.26 },  // 后侧按比例调整
         },
         wide: {
-          front: { x: 0.08, y: 0.26, width: 0.80, height: 0.30 },
-          rear:  { x: 0.10, y: 0.30, width: 0.78, height: 0.25 },  // 后侧按比例缩小
+          front: { x: 0.087, y: 0.32, width: 0.82, height: 0.29 },
+          rear:  { x: 0.10, y: 0.34, width: 0.80, height: 0.24 },
         }
       };
 
@@ -1183,8 +1183,8 @@ export default {
       if (!IS_LOCAL_DEV) {
         console.log('🔍 非本地开发模式，进行拍照前检查');
         const metrics = this.lastDetectionMetrics || {};
-        const iouOK = (metrics.iou || 0) >= 0.60; // 要求较高的IoU
-        const areaOK = (metrics.areaRatio || 0) >= 0.70; // 要求合理的面积比
+        const iouOK = (metrics.iou || 0) >= 0.45; // 与alignment.js阈值保持一致
+        const areaOK = (metrics.areaRatio || 0) >= 0.60; // 适当降低面积比要求
 
         if (!iouOK || !areaOK) {
           console.log('❌ 拍照前检查失败');
