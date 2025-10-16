@@ -290,12 +290,12 @@ export default {
 
       const regions = {
         normal: {
-          front: { x: 0.08, y: 0.28, width: 0.78, height: 0.38 },
-          rear:  { x: 0.10, y: 0.32, width: 0.76, height: 0.36 },
+          front: { x: 0.075, y: 0.22, width: 0.85, height: 0.56 },  // 对应CSS图片的完整区域
+          rear:  { x: 0.075, y: 0.27, width: 0.85, height: 0.46 },  // 后侧图片更矮，Y坐标调高
         },
         wide: {
-          front: { x: 0.08, y: 0.26, width: 0.80, height: 0.34 },
-          rear:  { x: 0.10, y: 0.30, width: 0.78, height: 0.33 },
+          front: { x: 0.075, y: 0.20, width: 0.85, height: 0.54 },
+          rear:  { x: 0.075, y: 0.25, width: 0.85, height: 0.44 },
         }
       };
 
@@ -1307,7 +1307,7 @@ export default {
       // 播放语音并开始新检测
       this.playVoice(this.currentStep.voice, true);
 
-      // 增加延迟，确保前一个检测完全停止
+      // 增加延迟，确保前一个检测完全停止，给用户时间移动到新角度
       setTimeout(() => {
         if (!this.isDetecting && !this.isCapturing) {  // 双重检查状态
           console.log('🔄 启动新步骤检测');
@@ -1317,7 +1317,7 @@ export default {
           console.log('⚠️ 检测或拍摄状态异常，不启动新检测', { isDetecting: this.isDetecting, isCapturing: this.isCapturing });
           this.addDebugLog(`⚠️ 状态异常，不启动检测 - detecting:${this.isDetecting}, capturing:${this.isCapturing}`);
         }
-      }, 1000); // 进一步增加延迟
+      }, 3000); // 增加到3秒，给用户充分时间移动
     },
 
     addUserInteractionListeners() {
