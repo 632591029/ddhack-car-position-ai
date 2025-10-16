@@ -239,7 +239,6 @@ export default {
           desc: '请将车辆左前侧对齐虚线轮廓，让车头露出完整',
           overlayImage: OVERLAY_LEFT_FRONT,
           solidImage: SOLID_LEFT_FRONT,
-          expectedRegion: { x: 0.075, y: 0.22, width: 0.85, height: 0.56 },
           voice: '请对准车辆左前侧'
         },
         {
@@ -247,7 +246,6 @@ export default {
           desc: '请转到车辆右前侧，让车头贴合虚线轮廓',
           overlayImage: OVERLAY_RIGHT_FRONT,
           solidImage: SOLID_RIGHT_FRONT,
-          expectedRegion: { x: 0.075, y: 0.22, width: 0.85, height: 0.56 },
           voice: '请对准车辆右前侧'
         },
         {
@@ -255,7 +253,6 @@ export default {
           desc: '请移动到车辆右后侧，对齐虚线框位置',
           overlayImage: OVERLAY_RIGHT_REAR,
           solidImage: SOLID_RIGHT_REAR,
-          expectedRegion: { x: 0.075, y: 0.27, width: 0.85, height: 0.46 },
           voice: '请对准车辆右后侧'
         },
         {
@@ -263,7 +260,6 @@ export default {
           desc: '请移动到车辆左后侧，保持车辆充满虚线轮廓',
           overlayImage: OVERLAY_LEFT_REAR,
           solidImage: SOLID_LEFT_REAR,
-          expectedRegion: { x: 0.075, y: 0.27, width: 0.85, height: 0.46 },
           voice: '请对准车辆左后侧'
         }
       ]
@@ -290,12 +286,12 @@ export default {
 
       const regions = {
         normal: {
-          front: { x: 0.075, y: 0.22, width: 0.85, height: 0.56 },  // 对应CSS图片的完整区域
-          rear:  { x: 0.075, y: 0.27, width: 0.85, height: 0.46 },  // 后侧图片更矮，Y坐标调高
+          front: { x: 0.08, y: 0.28, width: 0.78, height: 0.32 },  // 基于实际测试数据
+          rear:  { x: 0.10, y: 0.32, width: 0.76, height: 0.27 },  // 后侧按比例缩小
         },
         wide: {
-          front: { x: 0.075, y: 0.20, width: 0.85, height: 0.54 },
-          rear:  { x: 0.075, y: 0.25, width: 0.85, height: 0.44 },
+          front: { x: 0.08, y: 0.26, width: 0.80, height: 0.30 },
+          rear:  { x: 0.10, y: 0.30, width: 0.78, height: 0.25 },  // 后侧按比例缩小
         }
       };
 
